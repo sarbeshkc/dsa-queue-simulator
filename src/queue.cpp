@@ -24,5 +24,5 @@ template<typename  T> void Queue<T>::printQueue() const {
   for (const T& element: elements) {
     std::cout << element << "";
   }
-  std::cout << std::endl;
+  std::cout << "\n";
 }

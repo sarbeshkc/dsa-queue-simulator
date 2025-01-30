@@ -1,5 +1,4 @@
 #include <SDL3/SDL.h>
-#include <stdio.h>
 #include <vector>
 
 template <typename T> class Queue {

@@ -9,13 +9,16 @@
 
 class Text {
 public:
-  Text(SDL_Renderer *renderer, TTF_Font *font, const std::string &text,
-       SDL_Color color);
+  Text(SDL_Renderer *renderer, TTF_Font *font);
   ~Text();
 
-  void setText(const std::string &text);
-  void setColor(SDL_Color color);
+  Text(const Text &) = delete;
+  Text &operator=(const Text) = delete;
+
+  void setText(const std::string &text, SDL_Color color = {255, 255, 255, 255});
   void render(int x, int y) const;
+  [[nodiscard]] int getWidth() const { return m_width; }
+  [[nodiscard]] int getHeight() const { return m_height; }
 
 private:
   SDL_Renderer *m_renderer;
@@ -27,6 +30,7 @@ private:
   int m_height;
 
   void createTexture();
+  void destroyTexture();
 };
 
 #endif // TEXT_H
