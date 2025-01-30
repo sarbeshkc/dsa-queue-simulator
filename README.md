@@ -41,3 +41,22 @@ cmake .. && cmake --build .
 
 # Run the simulation
 cd Debug && ./comp_assignment
+
+```
+
+## Note
+
+You will need to copy .dll file to where your executable (.exe) file is,
+bash
+```
+cd libs/SDL
+mkdir build && cd build
+cmake ..
+cmake --build .
+cmake --install . --prefix ../../SDL3_install
+```
+
+This is something that you could use but i don't think it's necessary 
+
+
+
