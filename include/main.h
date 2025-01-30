@@ -1,9 +1,11 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include "SDL3_ttf/SDL_ttf.h"
 #include "window.h"
 #include <SDL3/SDL.h>
-#include <string>
+#include <memory>
+#include "text.h"
 
 class App {
 public:
@@ -19,6 +21,9 @@ private:
 
   Window m_window;
   bool m_running = true;
+
+  TTF_Font* m_font;
+  std::unique_ptr<Text> m_text;
 };
 
 #endif // !MAIN_H

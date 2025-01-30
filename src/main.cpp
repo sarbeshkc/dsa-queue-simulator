@@ -3,10 +3,29 @@
 #include "SDL3/SDL_events.h"
 #include "SDL3/SDL_init.h"
 #include "SDL3/SDL_log.h"
+#include "SDL3_ttf/SDL_ttf.h"
 #include <SDL3/SDL_render.h>
 #include <exception>
+#include <memory>
+#include <iostream>
+
 
 App::App() : m_window("Traffic Simulator", 1280, 720) {
+
+if (  TTF_Init() == -1){
+    std::cout << "Error";
+
+  }
+
+  m_font == TTF_OpenFont("../assets/fonts/DaddyTimeMonoNerdFontMono-Regular.ttf", 24);
+    m_text = std::make_unique<Text>(
+        m_window.renderer(),
+        m_font,
+        "Hello, SDL!",
+        SDL_Color{255, 255, 255, 255}
+    );
+
+
   // Initialize other sub system
 }
 

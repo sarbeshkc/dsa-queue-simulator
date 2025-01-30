@@ -1,16 +1,17 @@
-#include<stdio.h>
 #include <SDL3/SDL.h>
+#include <stdio.h>
 #include <vector>
 
+template <typename T> class Queue {
+private:
+  std::vector<T> elements;
 
+public:
+  void enqueue(const T &value);
 
-class Queue {
-  Queue();
+  bool empty();
 
-  public:
-
-
-
-
-
+  void dequeue();
+  const T &front() const;
+  void printQueue() const;
 };

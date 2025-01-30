@@ -1,4 +1,44 @@
 CompileFlags:
   Add:
+    # Include paths
     - "-IE:/Collage/comp_Assignment/include"
     - "-IE:/Collage/comp_Assignment/libs/SDL3_install/include"
+    - "-IE:/Collage/comp_Assignment/libs/SDL3_install/include/SDL3"
+    
+    # Compiler flags for better warnings and C++ standard
+    - "-xc++"
+    - "-std=c++17"
+    - "-Wall"
+    - "-Wextra"
+    - "-Wpedantic"
+    - "-Wconversion"
+    - "-Wsign-conversion"
+    - "-Wcast-align"
+    - "-Wformat=2"
+    - "-Wunused"
+
+Index:
+  Background: Build
+  StandardLibrary: Yes
+
+Diagnostics:
+  ClangTidy:
+    Add: 
+      - modernize-*
+      - performance-*
+      - readability-*
+      - bugprone-*
+      - cppcoreguidelines-*
+    Remove:
+      - modernize-use-trailing-return-type
+      - cppcoreguidelines-avoid-magic-numbers
+
+Style:
+  ColumnLimit: 100
+  IndentWidth: 2
+  TabWidth: 2
+  UseTab: Never
+  BreakBeforeBraces: Attach
+  AllowShortFunctionsOnASingleLine: All
+  SortIncludes: true
+  PointerAlignment: Left
