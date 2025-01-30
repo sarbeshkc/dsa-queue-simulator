@@ -3,8 +3,8 @@
 #include "SDL3/SDL_events.h"
 #include "SDL3/SDL_init.h"
 #include "SDL3/SDL_log.h"
-#include <exception>
 #include <SDL3/SDL_render.h>
+#include <exception>
 
 App::App() : m_window("Traffic Simulator", 1280, 720) {
   // Initialize other sub system
@@ -19,7 +19,6 @@ void App::run() {
     process_event();
     update();
     render();
-
   }
 }
 
@@ -37,22 +36,18 @@ void App::render() {
 
   m_window.clear();
 
-
   // Rendering code goes here
   m_window.present();
 }
 
-int main(int argc, char *argv[]) {
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) == 0) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to Initialize SDL: %s\n", SDL_GetError());
-    return 1;
-  }
+int main(int argc, const char *argv[]) {
+  (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS));
   try {
     App app;
     app.run();
 
   } catch (const std::exception &e) {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error: %s\n", e.what());
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error: %s\n", e.what());
   }
 
   SDL_Quit();
