@@ -59,4 +59,39 @@ cmake --install . --prefix ../../SDL3_install
 This is something that you could use but i don't think it's necessary 
 
 
+## Note Again 
+
+You will need to build SDL and SDL_ttf for it to work 
+
+```bash
+
+# To build SDL
+
+cd libs/SDL
+rm -rf build
+rm -rf ../SDL3_install
+mkdir build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release
+cmake --install . --prefix ../../SDL3_install
+```
+
+And to build SDL_ttf
+
+```bash
+cd ../../SDL_ttf
+rm -rf build
+mkdir build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DSDL3_DIR="E:/Collage/comp_Assignment/libs/SDL3_install/cmake"
+cmake --build . --config Release
+cmake --install . --prefix ../../SDL3_install
+```
+
+I am using my absolute path you use yours ><
+
+
+
+
 
