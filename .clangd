@@ -1,0 +1,4 @@
+CompileFlags:
+  Add:
+    - "-IE:/Collage/comp_Assignment/include"
+    - "-IE:/Collage/comp_Assignment/libs/SDL3_install/include"

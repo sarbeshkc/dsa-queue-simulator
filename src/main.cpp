@@ -1,48 +1,60 @@
-// Example program:
-// Using SDL3 to create an application window
+#include "main.h"
+#include "SDL3/SDL_error.h"
+#include "SDL3/SDL_events.h"
+#include "SDL3/SDL_init.h"
+#include "SDL3/SDL_log.h"
+#include <exception>
+#include <SDL3/SDL_render.h>
 
-#include <SDL3/SDL.h>
-
-int main(int argc, char* argv[]) {
-
-    SDL_Window *window;                    // Declare a pointer
-
-    SDL_Init(SDL_INIT_VIDEO);              // Initialize SDL3
-
-    // Create an application window with the following settings:
-    window = SDL_CreateWindow(
-        "An SDL3 window",                  // window title
-        640,                               // width, in pixels
-        480,                               // height, in pixels
-        SDL_WINDOW_OPENGL                  // flags - see below
-    );
-
-    // Check that the window was successfully created
-    if (window == NULL) {
-        // In the case that the window could not be made...
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Could not create window: %s\n", SDL_GetError());
-        return 1;
-    }
-
-    // The window is open: could enter program loop here (see SDL_PollEvent())
-
-    SDL_Delay(10000);  // Pause execution for 3000 milliseconds, for example
-
-    // Close and destroy the window
-    SDL_DestroyWindow(window);
-
-
-    // Clean up
-    SDL_Quit();
-    return 0;
+App::App() : m_window("Traffic Simulator", 1280, 720) {
+  // Initialize other sub system
 }
 
+App::~App() {
+  // Clean up
+}
+
+void App::run() {
+  while (m_running) {
+    process_event();
+    update();
+    render();
+
+  }
+}
+
+void App::process_event() {
+  SDL_Event event;
+  while (SDL_PollEvent(&event)) {
+    if (event.type == SDL_EVENT_QUIT) {
+      m_running = false;
+    }
+  }
+}
+
+void App::update() {}
+void App::render() {
+
+  m_window.clear();
 
 
-// #include <iostream>
-// int main() {
-//     std::cout << "Hello, world!" << std::endl;
-//     system("pause");  // Press any key to continue...
-//     return 0;
-// }
+  // Rendering code goes here
+  m_window.present();
+}
 
+int main(int argc, char *argv[]) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) == 0) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to Initialize SDL: %s\n", SDL_GetError());
+    return 1;
+  }
+  try {
+    App app;
+    app.run();
+
+  } catch (const std::exception &e) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error: %s\n", e.what());
+  }
+
+  SDL_Quit();
+  return 0;
+}
