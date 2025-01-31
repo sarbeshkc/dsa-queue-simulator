@@ -12,12 +12,16 @@ list(APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/libs/SDL3_install")
 find_package(SDL3 REQUIRED)
 find_package(SDL3_ttf REQUIRED)
 
-# Source files - Fixed path for traffic_generator
+# Source files
 set(SOURCES
     "${CMAKE_SOURCE_DIR}/src/core/main.cpp"
     "${CMAKE_SOURCE_DIR}/src/core/window.cpp"
     "${CMAKE_SOURCE_DIR}/src/core/text.cpp"
     "${CMAKE_SOURCE_DIR}/src/traffic/vehicle.cpp"
+    "${CMAKE_SOURCE_DIR}/src/traffic/lane.cpp"
+    "${CMAKE_SOURCE_DIR}/src/traffic/road_system.cpp"
+    "${CMAKE_SOURCE_DIR}/src/traffic/traffic_queue.cpp"
+    "${CMAKE_SOURCE_DIR}/src/traffic/traffic_manager.cpp"
     "${CMAKE_SOURCE_DIR}/src/generator/traffic_generator.cpp"
 )
 
@@ -27,6 +31,10 @@ set(HEADERS
     "${CMAKE_SOURCE_DIR}/src/core/window.h"
     "${CMAKE_SOURCE_DIR}/src/core/text.h"
     "${CMAKE_SOURCE_DIR}/src/traffic/vehicle.h"
+    "${CMAKE_SOURCE_DIR}/src/traffic/lane.h"
+    "${CMAKE_SOURCE_DIR}/src/traffic/road_system.h"
+    "${CMAKE_SOURCE_DIR}/src/traffic/traffic_queue.h"
+    "${CMAKE_SOURCE_DIR}/src/traffic/traffic_manager.h"
     "${CMAKE_SOURCE_DIR}/src/generator/traffic_generator.h"
 )
 

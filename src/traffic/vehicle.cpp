@@ -20,117 +20,93 @@ Vehicle::Vehicle(SDL_Renderer* renderer, int vehicle_id, LaneId startLane,
 Vehicle::~Vehicle() = default;
 
 void Vehicle::render() const {
-    float x = m_position.x - 10;
-    float y = m_position.y - 20;
-    float w = 20;
-    float h = 40;
+    // Adjust vehicle dimensions
+    const float carWidth = 20.0f;
+    const float carLength = 40.0f;
+    const float halfWidth = carWidth / 2.0f;
+    const float halfLength = carLength / 2.0f;
 
+    // Calculate corner positions based on direction
     SDL_Vertex vertices[6];
-
-    // Set colors based on priority
-    Uint8 r = m_isPriority ? 255 : 0;
-    Uint8 g = m_isPriority ? 0 : 255;
-    Uint8 b = 0;
-    Uint8 a = 255;
-
-    // Define vertices for vehicle body (two triangles forming a rectangle)
-    vertices[0].position.x = x;
-    vertices[0].position.y = y;
-    vertices[0].color.r = r;
-    vertices[0].color.g = g;
-    vertices[0].color.b = b;
-    vertices[0].color.a = a;
-
-    vertices[1].position.x = x + w;
-    vertices[1].position.y = y;
-    vertices[1].color.r = r;
-    vertices[1].color.g = g;
-    vertices[1].color.b = b;
-    vertices[1].color.a = a;
-
-    vertices[2].position.x = x;
-    vertices[2].position.y = y + h;
-    vertices[2].color.r = r;
-    vertices[2].color.g = g;
-    vertices[2].color.b = b;
-    vertices[2].color.a = a;
-
-    vertices[3].position.x = x + w;
-    vertices[3].position.y = y;
-    vertices[3].color.r = r;
-    vertices[3].color.g = g;
-    vertices[3].color.b = b;
-    vertices[3].color.a = a;
-
-    vertices[4].position.x = x + w;
-    vertices[4].position.y = y + h;
-    vertices[4].color.r = r;
-    vertices[4].color.g = g;
-    vertices[4].color.b = b;
-    vertices[4].color.a = a;
-
-    vertices[5].position.x = x;
-    vertices[5].position.y = y + h;
-    vertices[5].color.r = r;
-    vertices[5].color.g = g;
-    vertices[5].color.b = b;
-    vertices[5].color.a = a;
-
-    SDL_RenderGeometry(m_renderer, nullptr, vertices, 6, nullptr, 0);
-
-    // Direction indicator
-    SDL_Vertex directionIndicator[3];
-
-    // Yellow color for direction indicator
-    Uint8 indicator_r = 255;
-    Uint8 indicator_g = 255;
-    Uint8 indicator_b = 0;
-    Uint8 indicator_a = 255;
+    SDL_FColor vehicleColor;
+    if (m_isPriority) {
+        vehicleColor = {1.0f, 0.0f, 0.0f, 1.0f}; // Red for priority
+    } else {
+        vehicleColor = {0.0f, 1.0f, 0.0f, 1.0f}; // Green for normal
+    }
 
     switch(m_facing) {
         case Direction::NORTH:
-            directionIndicator[0].position.x = m_position.x;
-            directionIndicator[0].position.y = m_position.y - 25;
-            directionIndicator[1].position.x = m_position.x - 5;
-            directionIndicator[1].position.y = m_position.y - 15;
-            directionIndicator[2].position.x = m_position.x + 5;
-            directionIndicator[2].position.y = m_position.y - 15;
+        case Direction::SOUTH: {
+            // For vertical movement, length is in Y direction
+            vertices[0].position = {m_position.x - halfWidth, m_position.y - halfLength}; // Top left
+            vertices[1].position = {m_position.x + halfWidth, m_position.y - halfLength}; // Top right
+            vertices[2].position = {m_position.x - halfWidth, m_position.y + halfLength}; // Bottom left
+            vertices[3].position = {m_position.x + halfWidth, m_position.y - halfLength}; // Top right
+            vertices[4].position = {m_position.x + halfWidth, m_position.y + halfLength}; // Bottom right
+            vertices[5].position = {m_position.x - halfWidth, m_position.y + halfLength}; // Bottom left
             break;
-        case Direction::SOUTH:
-            directionIndicator[0].position.x = m_position.x;
-            directionIndicator[0].position.y = m_position.y + 25;
-            directionIndicator[1].position.x = m_position.x - 5;
-            directionIndicator[1].position.y = m_position.y + 15;
-            directionIndicator[2].position.x = m_position.x + 5;
-            directionIndicator[2].position.y = m_position.y + 15;
-            break;
+        }
         case Direction::EAST:
-            directionIndicator[0].position.x = m_position.x + 15;
-            directionIndicator[0].position.y = m_position.y;
-            directionIndicator[1].position.x = m_position.x + 5;
-            directionIndicator[1].position.y = m_position.y - 5;
-            directionIndicator[2].position.x = m_position.x + 5;
-            directionIndicator[2].position.y = m_position.y + 5;
+        case Direction::WEST: {
+            // For horizontal movement, length is in X direction
+            vertices[0].position = {m_position.x - halfLength, m_position.y - halfWidth}; // Left top
+            vertices[1].position = {m_position.x + halfLength, m_position.y - halfWidth}; // Right top
+            vertices[2].position = {m_position.x - halfLength, m_position.y + halfWidth}; // Left bottom
+            vertices[3].position = {m_position.x + halfLength, m_position.y - halfWidth}; // Right top
+            vertices[4].position = {m_position.x + halfLength, m_position.y + halfWidth}; // Right bottom
+            vertices[5].position = {m_position.x - halfLength, m_position.y + halfWidth}; // Left bottom
             break;
-        case Direction::WEST:
-            directionIndicator[0].position.x = m_position.x - 15;
-            directionIndicator[0].position.y = m_position.y;
-            directionIndicator[1].position.x = m_position.x - 5;
-            directionIndicator[1].position.y = m_position.y - 5;
-            directionIndicator[2].position.x = m_position.x - 5;
-            directionIndicator[2].position.y = m_position.y + 5;
-            break;
+        }
     }
 
-    // Set color for all direction indicator vertices
+    // Set colors for all vertices
+    for (int i = 0; i < 6; i++) {
+        vertices[i].color = vehicleColor;
+    }
+
+    // Draw vehicle body
+    SDL_RenderGeometry(m_renderer, nullptr, vertices, 6, nullptr, 0);
+
+    // Draw direction indicator (front of vehicle)
+    SDL_Vertex indicator[3];
+    SDL_FColor indicatorColor = {1.0f, 1.0f, 0.0f, 1.0f}; // Yellow
+
+    float indicatorSize = 10.0f;
+    switch(m_facing) {
+        case Direction::NORTH: {
+            indicator[0].position = {m_position.x, m_position.y - halfLength - 5};
+            indicator[1].position = {m_position.x - 5, m_position.y - halfLength + 5};
+            indicator[2].position = {m_position.x + 5, m_position.y - halfLength + 5};
+            break;
+        }
+        case Direction::SOUTH: {
+            indicator[0].position = {m_position.x, m_position.y + halfLength + 5};
+            indicator[1].position = {m_position.x - 5, m_position.y + halfLength - 5};
+            indicator[2].position = {m_position.x + 5, m_position.y + halfLength - 5};
+            break;
+        }
+        case Direction::EAST: {
+            indicator[0].position = {m_position.x + halfLength + 5, m_position.y};
+            indicator[1].position = {m_position.x + halfLength - 5, m_position.y - 5};
+            indicator[2].position = {m_position.x + halfLength - 5, m_position.y + 5};
+            break;
+        }
+        case Direction::WEST: {
+            indicator[0].position = {m_position.x - halfLength - 5, m_position.y};
+            indicator[1].position = {m_position.x - halfLength + 5, m_position.y - 5};
+            indicator[2].position = {m_position.x - halfLength + 5, m_position.y + 5};
+            break;
+        }
+    }
+
+    // Set indicator colors
     for (int i = 0; i < 3; i++) {
-        directionIndicator[i].color.r = indicator_r;
-        directionIndicator[i].color.g = indicator_g;
-        directionIndicator[i].color.b = indicator_b;
-        directionIndicator[i].color.a = indicator_a;
+        indicator[i].color = indicatorColor;
     }
 
-    SDL_RenderGeometry(m_renderer, nullptr, directionIndicator, 3, nullptr, 0);
+    // Draw direction indicator
+    SDL_RenderGeometry(m_renderer, nullptr, indicator, 3, nullptr, 0);
 }
 
 void Vehicle::update(float deltaTime) {
