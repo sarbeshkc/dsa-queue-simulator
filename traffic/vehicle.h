@@ -115,4 +115,5 @@ private:
   void updatePosition(float deltaTime);
   void updateState();
   bool checkCollision() const;
+  bool needsTurnLeft(LaneId oldLane, LaneId newLane);
 };

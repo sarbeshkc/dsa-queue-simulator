@@ -2,7 +2,8 @@
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_video.h"
 #include <stdexcept>
-#include <window.h>
+#include"window.h"
+
 
 Window::Window(const std::string& title, int width, int height) {
   m_window = SDL_CreateWindow(title.c_str(), width, height, SDL_WINDOW_RESIZABLE);
