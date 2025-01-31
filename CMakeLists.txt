@@ -29,12 +29,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
           ${CMAKE_SOURCE_DIR}/traffic
               ${CMAKE_SOURCE_DIR}/config
        ${CMAKE_SOURCE_DIR}/renderer
-
-
-
-
     ${SDL3_INCLUDE_DIRS}
-
 )
 
 # Link SDL3 and SDL3_ttf
