@@ -13,15 +13,28 @@ find_package(SDL3_ttf REQUIRED)
 
 # Add executable
 add_executable(${PROJECT_NAME}
-    src/main.cpp
-    src/window.cpp
-    src/text.cpp
+core/main
+core/window.cpp
+core/text.cpp
+  #  src/main.cpp
+ #   src/window.cpp
+ #   src/text.cpp
 )
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
+   # ${CMAKE_SOURCE_DIR}/include
+   ${CMAKE_SIURCE_DIR}/core
+       ${CMAKE_SOURCE_DIR}/generator
+          ${CMAKE_SOURCE_DIR}/traffic
+              ${CMAKE_SOURCE_DIR}/config
+       ${CMAKE_SOURCE_DIR}/renderer
+
+
+
+
     ${SDL3_INCLUDE_DIRS}
+
 )
 
 # Link SDL3 and SDL3_ttf

@@ -14,6 +14,7 @@ namespace GameVariable {
 constexpr int WindowHeight = 720;
 constexpr int WindowLength = 1280;
 constexpr int TextPixel = 30;
+constexpr SDL_Color white = {255, 255, 255, 255};
 
 } // namespace GameVariable
 
@@ -32,12 +33,13 @@ App::App()
   }
 
   m_text = std::make_unique<Text>(m_window.renderer(), m_font);
-  m_text->setText("Traffic Simulator", SDL_Color{255, 255, 255, 255});
+  m_text->setText("Traffic Simulator", GameVariable::white);
 
   // Initialize other sub system
 }
 
 App::~App() {
+  SDL_Quit();
   // Clean up
 }
 
@@ -83,6 +85,5 @@ int main(int argc, const char *argv[]) {
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error: %s\n", e.what());
   }
 
-  SDL_Quit();
   return 0;
 }
