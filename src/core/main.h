@@ -6,6 +6,7 @@
 #include "window.h"
 #include <SDL3/SDL.h>
 #include <memory>
+#include "../generator/traffic_generator.h"
 
 class App {
 public:
@@ -24,6 +25,9 @@ private:
 
   TTF_Font *m_font;
   std::unique_ptr<Text> m_text;
+  TrafficGenerator m_generator;
+  std::vector<Vehicle *> m_vehicles;
+  Uint64 m_lastSpawnTime;
 };
 
 #endif // !MAIN_H
