@@ -1,0 +1,2 @@
+*.rs linguist-vendored=true
+Cargo.* linguist-vendored=true
