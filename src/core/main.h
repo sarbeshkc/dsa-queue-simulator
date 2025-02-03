@@ -1,13 +1,13 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include "../generator/traffic_generator.h"
+#include "../traffic/road_system.h"
 #include "SDL3_ttf/SDL_ttf.h"
 #include "text.h"
 #include "window.h"
 #include <SDL3/SDL.h>
 #include <memory>
-#include "../generator/traffic_generator.h"
-#include"../traffic/road_system.h"
 
 class App {
 public:
@@ -26,7 +26,7 @@ private:
 
   TTF_Font *m_font;
   std::unique_ptr<Text> m_text;
-    RoadSystem m_roadSystem;
+  RoadSystem m_roadSystem;
 
   TrafficGenerator m_generator;
   std::vector<Vehicle *> m_vehicles;
