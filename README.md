@@ -68,8 +68,6 @@ You will need to build SDL and SDL_ttf for it to work
 # To build SDL
 
 cd libs/SDL
-rm -rf build
-rm -rf ../SDL3_install
 mkdir build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
