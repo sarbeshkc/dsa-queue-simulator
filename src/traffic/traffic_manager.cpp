@@ -1,126 +1,131 @@
+// src/traffic/traffic_manager.cpp
 #include "traffic_manager.h"
+#include <algorithm> // For std::find_if and other algorithms
+#include <cmath>     // For mathematical operations like ceil()
 
-TrafficManager::TrafficManager() {
-    // Initialize queues for all lanes
-    for (int i = 0; i < 12; ++i) { // 12 lanes total (3 per road * 4 roads)
-        LaneId laneId = static_cast<LaneId>(i);
-        m_queues[laneId] = TrafficQueue();
+// Constructor initializes our traffic management system
+TrafficManager::TrafficManager(SDL_Renderer *renderer)
+    : m_renderer(renderer),
+      m_queueProcessor(std::make_unique<QueueProcessor>()),
+      m_priorityMode(false) { // Start in normal mode
 
-        // Set priority status for AL2, BL2, CL2, DL2
-        bool isPriority = (laneId == LaneId::AL2_PRIORITY ||
-                         laneId == LaneId::BL2_PRIORITY ||
-                         laneId == LaneId::CL2_PRIORITY ||
-                         laneId == LaneId::DL2_PRIORITY);
-        m_queues[laneId].setPriorityStatus(isPriority);
-    }
+  // Initialize lanes for each road
+  for (int i = 0; i < 12; ++i) {
+    LaneId laneId = static_cast<LaneId>(i);
+    m_lanes[laneId] = std::make_unique<Lane>(m_renderer, laneId);
+  }
 }
 
-void TrafficManager::addVehicle(Vehicle* vehicle, LaneId lane) {
-    if (vehicle && m_queues.count(lane) > 0) {
-        m_queues[lane].enqueue(vehicle);
-        checkPriorityConditions();
+
+
+int TrafficManager::calculateVehiclesToProcess() const {
+  // Implement the formula |V| = 1/n Σ|Li|
+  int normalLaneCount = 0;
+  int totalQueueLength = 0;
+
+  // Count only normal (non-priority) lanes
+  for (const auto &[id, lane] : m_lanes) {
+    if (!lane->isPriorityLane()) {
+      normalLaneCount++;
+      totalQueueLength += lane->getQueueLength();
     }
+  }
+
+  // Calculate average and round up as per assignment requirements
+  if (normalLaneCount == 0)
+    return 0;
+  return static_cast<int>(
+      std::ceil(static_cast<float>(totalQueueLength) / normalLaneCount));
 }
 
+// Update function processes all traffic management logic
 void TrafficManager::update(float deltaTime) {
-    // Update all queues
-    for (auto& [lane, queue] : m_queues) {
-        queue.update(deltaTime);
-    }
+  // Check if any priority conditions need handling
+  checkPriorityConditions();
 
-    // Process vehicles based on conditions
-    processLanes();
+  // Process all lanes according to traffic rules
+  processLanes(deltaTime);
+
+  // Read any new vehicles from the communication system
+  auto newVehicles = readNewVehicles();
+  for (auto *vehicle : newVehicles) {
+    addVehicle(vehicle);
+  }
 }
 
-void TrafficManager::processLanes() {
-    if (shouldProcessPriorityLane()) {
-        processPriorityCondition();
-    } else {
-        processNormalCondition();
-    }
+// Render displays the current state of all traffic elements
+void TrafficManager::render() const {
+  // Render all lanes and their vehicles
+  for (const auto &[id, lane] : m_lanes) {
+    lane->render();
+  }
 }
 
-bool TrafficManager::shouldProcessPriorityLane() const {
-    // Check if any priority lane has more than threshold vehicles
-    for (const auto& [lane, queue] : m_queues) {
-        if (queue.isPriorityQueue() && queue.size() >= PRIORITY_THRESHOLD_HIGH) {
-            return true;
-        }
-    }
-    return false;
+// Add a new vehicle to the appropriate lane
+void TrafficManager::addVehicle(Vehicle *vehicle) {
+  if (!vehicle)
+    return;
+
+  auto laneId = vehicle->getCurrentLaneId();
+  if (auto it = m_lanes.find(laneId); it != m_lanes.end()) {
+    it->second->addVehicle(vehicle);
+  }
 }
 
+// Process all lanes according to traffic rules
+void TrafficManager::processLanes(float deltaTime) {
+  // In priority mode, handle priority lanes first
+  if (m_priorityMode) {
+    processPriorityLanes(deltaTime);
+  }
+
+  // Process normal lanes using the |V| = 1/n Σ|Li| formula
+  int vehiclesToProcess = calculateVehiclesToProcess();
+
+  for (auto &[id, lane] : m_lanes) {
+    if (!lane->isPriorityLane()) {
+      lane->update(deltaTime);
+    }
+  }
+}
+
+
+
+// Check and update priority conditions
 void TrafficManager::checkPriorityConditions() {
-    bool shouldBePriority = false;
-
-    // Check all priority lanes
-    for (const auto& [lane, queue] : m_queues) {
-        if (queue.isPriorityQueue()) {
-            if (queue.size() >= PRIORITY_THRESHOLD_HIGH) {
-                shouldBePriority = true;
-                break;
-            }
-        }
+  // Check if any priority lane has more than 10 vehicles
+  for (const auto &[id, lane] : m_lanes) {
+    if (lane->isPriorityLane() && lane->getQueueLength() >= 10) {
+      m_priorityMode = true;
+      return;
     }
+  }
 
-    // Check if we should exit priority mode
-    if (m_inPriorityMode) {
-        bool allPriorityLowEnough = true;
-        for (const auto& [lane, queue] : m_queues) {
-            if (queue.isPriorityQueue() && queue.size() >= PRIORITY_THRESHOLD_LOW) {
-                allPriorityLowEnough = false;
-                break;
-            }
-        }
-        if (allPriorityLowEnough) {
-            shouldBePriority = false;
-        }
+  // Check if we can exit priority mode (all priority lanes < 5 vehicles)
+  bool canExitPriority = true;
+  for (const auto &[id, lane] : m_lanes) {
+    if (lane->isPriorityLane() && lane->getQueueLength() >= 5) {
+      canExitPriority = false;
+      break;
     }
+  }
 
-    m_inPriorityMode = shouldBePriority;
+  if (canExitPriority) {
+    m_priorityMode = false;
+  }
 }
 
-void TrafficManager::processNormalCondition() {
-    float avgLength = calculateAverageQueueLength();
-    if (avgLength <= 0) return;
-
-    // Process normal lanes based on average queue length
-    for (auto& [lane, queue] : m_queues) {
-        if (!queue.isPriorityQueue() && !queue.empty()) {
-            Vehicle* vehicle = queue.dequeue();
-            if (vehicle) {
-                // Here you would implement the logic to move the vehicle
-                // through the intersection
-            }
-        }
+// Process priority lanes when in priority mode
+void TrafficManager::processPriorityLanes(float deltaTime) {
+  for (auto &[id, lane] : m_lanes) {
+    if (lane->isPriorityLane()) {
+      lane->update(deltaTime);
     }
+  }
 }
 
-void TrafficManager::processPriorityCondition() {
-    // Process only priority lanes that are above threshold
-    for (auto& [lane, queue] : m_queues) {
-        if (queue.isPriorityQueue() && queue.size() >= PRIORITY_THRESHOLD_LOW) {
-            while (!queue.empty() && queue.size() >= PRIORITY_THRESHOLD_LOW) {
-                Vehicle* vehicle = queue.dequeue();
-                if (vehicle) {
-                    // Here you would implement the logic to move the vehicle
-                    // through the intersection
-                }
-            }
-        }
-    }
-}
-
-float TrafficManager::calculateAverageQueueLength() const {
-    float totalLength = 0;
-    int count = 0;
-
-    for (const auto& [lane, queue] : m_queues) {
-        if (!queue.isPriorityQueue()) {
-            totalLength += queue.size();
-            count++;
-        }
-    }
-
-    return count > 0 ? totalLength / count : 0;
+// Helper function to read new vehicles from communication system
+std::vector<Vehicle *> TrafficManager::readNewVehicles() {
+  // Implementation depends on your communication system
+  return std::vector<Vehicle *>();
 }

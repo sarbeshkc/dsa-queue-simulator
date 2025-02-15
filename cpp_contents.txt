@@ -1,0 +1,4275 @@
+
+================================================================================
+File: src\common\types.h
+================================================================================
+
+// src/common/types.h
+#ifndef TYPES_H
+#define TYPES_H
+
+// Lane identification
+enum class LaneId {
+    AL1_INCOMING, AL2_PRIORITY, AL3_FREELANE,
+    BL1_INCOMING, BL2_PRIORITY, BL3_FREELANE,
+    CL1_INCOMING, CL2_PRIORITY, CL3_FREELANE,
+    DL1_INCOMING, DL2_PRIORITY, DL3_FREELANE
+};
+
+// Direction enum for vehicle movement
+enum class Direction {
+    NORTH,
+    SOUTH,
+    EAST,
+    WEST
+};
+
+#endif // TYPES_H
+
+
+================================================================================
+File: src\communication\file_handler.cpp
+================================================================================
+
+// file_handler.cpp
+#include "file_handler.h"
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
+FileHandler::FileHandler(const std::string &directory)
+    : m_directory(directory) {
+  initializeDirectory();
+}
+
+FileHandler::~FileHandler() {
+    cleanup();  // Make sure cleanup() is also implemented
+}
+void FileHandler::initializeDirectory() {
+  namespace fs = std::filesystem;
+
+  // Create directory if it doesn't exist
+  if (!fs::exists(m_directory)) {
+    fs::create_directories(m_directory);
+  }
+
+  // Clear existing files
+  for (const auto &entry : fs::directory_iterator(m_directory)) {
+    fs::remove(entry.path());
+  }
+}
+
+
+// src/communication/file_handler.cpp
+void FileHandler::writeVehicleData(const Vehicle& vehicle) {
+    std::string fileName = getLaneFileName(vehicle.getLane());
+    std::string fullPath = m_directory + "/" + fileName;
+
+    std::ofstream file(fullPath, std::ios::app);
+    if (file.is_open()) {
+        file << vehicle.getId() << ","
+             << vehicle.getX() << ","
+             << vehicle.getY() << ","
+             << (vehicle.isPriority() ? "1" : "0") << "\n";
+    }
+}
+
+
+// src/communication/file_handler.cpp
+
+// Add this implementation to your existing file_handler.cpp
+void FileHandler::cleanup() {
+    // This method should clean up any files created during operation
+    namespace fs = std::filesystem;
+
+    // Delete all files in the traffic data directory
+    for (const auto& entry : fs::directory_iterator(m_directory)) {
+        try {
+            fs::remove(entry.path());
+        } catch (const std::exception& e) {
+            // Log error if file deletion fails
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                "Failed to delete file %s: %s",
+                entry.path().string().c_str(),
+                e.what());
+        }
+    }
+}
+
+LaneId FileHandler::getLaneFromFileName(const std::filesystem::path& filename) const {
+    std::string name = filename.string();
+    if (name.find("a1") != std::string::npos) return LaneId::AL1_INCOMING;
+    if (name.find("a2") != std::string::npos) return LaneId::AL2_PRIORITY;
+    if (name.find("a3") != std::string::npos) return LaneId::AL3_FREELANE;
+    // Add other lane mappings
+    if (name.find("b1") != std::string::npos) return LaneId::BL1_INCOMING;
+    if (name.find("b2") != std::string::npos) return LaneId::BL2_PRIORITY;
+    if (name.find("b3") != std::string::npos) return LaneId::BL3_FREELANE;
+    // Add the rest of the lanes...
+    return LaneId::AL1_INCOMING;  // Default return
+}
+
+void FileHandler::writeVehicleData(const Vehicle &vehicle) {
+  std::string fileName = getLaneFileName(vehicle.getLane());
+  std::string fullPath = m_directory + "/" + fileName;
+
+  // Write vehicle data in CSV format: id,isPriority,x,y
+  std::ofstream file(fullPath, std::ios::app);
+  if (file.is_open()) {
+    file << vehicle.getId() << "," << (vehicle.isPriority() ? "1" : "0") << ","
+         << vehicle.getX() << "," << vehicle.getY() << "\n";
+  }
+}
+
+std::vector<Vehicle *> FileHandler::readVehicleData(SDL_Renderer *renderer) {
+  std::vector<Vehicle *> vehicles;
+  namespace fs = std::filesystem;
+
+  // Read all lane files
+  for (const auto &entry : fs::directory_iterator(m_directory)) {
+    std::ifstream file(entry.path());
+    std::string line;
+
+    while (std::getline(file, line)) {
+      std::stringstream ss(line);
+      std::string item;
+      std::vector<std::string> data;
+
+      // Parse CSV line
+      while (std::getline(ss, item, ',')) {
+        data.push_back(item);
+      }
+
+      if (data.size() == 4) {
+        int id = std::stoi(data[0]);
+        LaneId lane = getLaneFromFileName(entry.path().filename());
+        Vehicle *vehicle = new Vehicle(renderer, id, lane);
+        vehicle->setPosition(std::stof(data[2]), std::stof(data[3]));
+        vehicles.push_back(vehicle);
+      }
+    }
+
+    // Clear file after reading
+    std::ofstream clearFile(entry.path(), std::ios::trunc);
+  }
+
+  return vehicles;
+}
+
+
+
+
+std::string FileHandler::getLaneFileName(LaneId lane) const {
+  std::string prefix = "lane_";
+  switch (lane) {
+  case LaneId::AL1_INCOMING:
+    return prefix + "a1.txt";
+  case LaneId::AL2_PRIORITY:
+    return prefix + "a2.txt";
+  case LaneId::AL3_FREELANE:
+    return prefix + "a3.txt";
+  // ... handle other lanes
+  default:
+    return prefix + "unknown.txt";
+  }
+}
+
+
+
+
+================================================================================
+File: src\communication\file_handler.h
+================================================================================
+
+// file_handler.h
+#ifndef FILE_HANDLER_H
+#define FILE_HANDLER_H
+
+#include "../traffic/vehicle.h"
+#include <filesystem>
+#include <string>
+#include <vector>
+
+class FileHandler {
+public:
+  FileHandler(const std::string &directory);
+  ~FileHandler();
+
+  // Write vehicle data to lane file
+  void writeVehicleData(const Vehicle &vehicle);
+
+  // Read vehicle data from lane files
+  std::vector<Vehicle *> readVehicleData(SDL_Renderer *renderer);
+
+  LaneId getLaneFromFileName(const std::filesystem::path &filename) const;
+
+private:
+  std::string m_directory;
+  std::string getLaneFileName(LaneId lane) const;
+  void initializeDirectory();
+  void cleanup();
+};
+
+#endif // FILE_HANDLER_H
+
+
+================================================================================
+File: src\core\main.cpp
+================================================================================
+
+// src/core/main.cpp
+#include "window.h"
+#include "../traffic/traffic_manager.h"
+#include "../traffic/road_system.h"
+#include <stdexcept>
+#include <iostream>
+
+class SimulationApp {
+public:
+    SimulationApp()
+        : m_window(nullptr)
+        , m_running(true)
+        , m_elapsedTime(0.0f) {
+
+        // Initialize SDL
+        if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+            throw std::runtime_error(
+                std::string("SDL initialization failed: ") + SDL_GetError()
+            );
+        }
+
+        // Create window and components
+        m_window = std::make_unique<Window>("Traffic Simulation", 1280, 720);
+        m_roadSystem = std::make_unique<RoadSystem>(m_window->getRenderer());
+        m_trafficManager = std::make_unique<TrafficManager>(m_window->getRenderer());
+    }
+
+    ~SimulationApp() {
+        SDL_Quit();
+    }
+
+    void run() {
+        Uint64 lastTime = SDL_GetTicks();
+
+        // Main game loop
+        while (m_running) {
+            // Calculate delta time
+            Uint64 currentTime = SDL_GetTicks();
+            float deltaTime = (currentTime - lastTime) / 1000.0f;
+            lastTime = currentTime;
+
+            // Update simulation
+            processEvents();
+            update(deltaTime);
+            render();
+
+            // Cap frame rate to approximately 60 FPS
+            SDL_Delay(16);
+        }
+    }
+
+private:
+    std::unique_ptr<Window> m_window;
+    std::unique_ptr<RoadSystem> m_roadSystem;
+    std::unique_ptr<TrafficManager> m_trafficManager;
+    bool m_running;
+    float m_elapsedTime;
+
+ void processEvents() {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+            case SDL_EVENT_QUIT:
+                m_running = false;
+                break;
+            case SDL_EVENT_KEY_DOWN:
+                // In SDL3, we use event.key.sym instead of event.key.keysym.sym
+                handleKeyPress(event.key.type);
+                break;
+        }
+    }
+}
+
+    void update(float deltaTime) {
+        m_elapsedTime += deltaTime;
+
+        // Update core systems
+        m_roadSystem->update(deltaTime);
+        m_trafficManager->update(deltaTime);
+
+        // Process any new vehicles from files
+        processNewVehicles();
+    }
+
+    void render() {
+        m_window->clear();
+
+        // Render simulation components
+        m_roadSystem->render();
+        m_trafficManager->render();
+
+        // Display queue statistics
+        renderStatistics();
+
+        m_window->present();
+    }
+
+    void handleKeyPress(SDL_Keycode key) {
+        switch (key) {
+            case SDLK_ESCAPE:
+                m_running = false;
+                break;
+            case SDLK_SPACE:
+                // Could add pause functionality
+                break;
+        }
+    }
+
+    void processNewVehicles() {
+        // Check for new vehicles from generator
+        // This is where we'll implement the file communication
+    }
+
+    void renderStatistics() {
+        // This will display queue lengths and wait times
+        // Implementation coming in the next part
+    }
+};
+
+int main(int argc, char* argv[]) {
+    try {
+        SimulationApp app;
+        app.run();
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
+
+================================================================================
+File: src\core\main.h
+================================================================================
+
+// src/core/main.h
+#ifndef MAIN_H
+#define MAIN_H
+
+#include "../traffic/road_system.h"
+#include "../traffic/intersection_controller.h"
+#include "../generator/traffic_generator.h"
+#include "../communication/file_communicator.h"
+#include "../visualization/visualization_manager.h"
+#include "window.h"
+#include <memory>
+#include <random>
+
+class SimulationApp {
+public:
+    SimulationApp();
+    ~SimulationApp();
+
+    void run();
+
+private:
+    // Core simulation settings
+    static constexpr int WINDOW_WIDTH = 1280;
+    static constexpr int WINDOW_HEIGHT = 720;
+    static constexpr float SPAWN_INTERVAL = 1000.0f;  // Milliseconds between vehicle spawns
+    static constexpr float TIME_STEP = 1.0f / 60.0f;  // 60 FPS fixed timestep
+
+    // Core components
+    std::unique_ptr<Window> m_window;
+    std::unique_ptr<RoadSystem> m_roadSystem;
+    std::unique_ptr<IntersectionController> m_intersectionController;
+    std::unique_ptr<TrafficGenerator> m_generator;
+    std::unique_ptr<FileCommunicator> m_communicator;
+    std::unique_ptr<VisualizationManager> m_visualizer;
+
+    // Simulation state
+    bool m_running;
+    float m_elapsedTime;
+    float m_lastSpawnTime;
+    std::mt19937 m_rng;
+
+    // Statistics tracking
+    struct SimulationStats {
+        int totalVehiclesProcessed;
+        float averageWaitTime;
+        int maxQueueLength;
+        float simulationTime;
+
+        SimulationStats()
+            : totalVehiclesProcessed(0)
+            , averageWaitTime(0.0f)
+            , maxQueueLength(0)
+            , simulationTime(0.0f) {}
+    } m_stats;
+
+    // Core loop methods
+    void processEvents();
+    void update(float deltaTime);
+    void render();
+
+    // Helper methods
+    void initializeComponents();
+    void updateStatistics(float deltaTime);
+    void handleVehicleSpawning(float deltaTime);
+    void cleanupVehicles();
+};
+
+#endif // MAIN_H
+
+
+================================================================================
+File: src\core\queue.cpp
+================================================================================
+
+// queue.cpp
+#include <stdexcept>
+#include "queue.h"
+
+template <typename T>
+void Queue<T>::enqueue(const T& item) {
+    m_elements.push_back(item);
+}
+
+template <typename T>
+T Queue<T>::dequeue() {
+    if (empty()) {
+        throw std::runtime_error("Queue is empty");
+    }
+
+    T front = m_elements.front();
+    m_elements.erase(m_elements.begin());
+    return front;
+}
+
+template <typename T>
+const T& Queue<T>::front() const {
+    if (empty()) {
+        throw std::runtime_error("Queue is empty");
+    }
+    return m_elements.front();
+}
+
+template <typename T>
+bool Queue<T>::empty() const {
+    return m_elements.empty();
+}
+
+template <typename T>
+size_t Queue<T>::size() const {
+    return m_elements.size();
+}
+
+template <typename T>
+bool Queue<T>::canProcess() const {
+    return m_processingTime >= PROCESS_TIME;
+}
+
+template <typename T>
+void Queue<T>::updateProcessingTime(float deltaTime) {
+    if (!empty()) {
+        m_processingTime += deltaTime;
+    }
+}
+
+template <typename T>
+void Queue<T>::resetProcessingTime() {
+    m_processingTime = 0.0f;
+}
+
+// LaneQueue implementation
+LaneQueue::LaneQueue(bool isPriority)
+    : m_isPriority(isPriority) {}
+
+bool LaneQueue::needsPriorityProcessing() const {
+    return m_isPriority && size() >= PRIORITY_THRESHOLD;
+}
+
+bool LaneQueue::canExitPriorityMode() const {
+    return size() <= PRIORITY_RESET;
+}
+
+
+================================================================================
+File: src\core\queue.h
+================================================================================
+
+// src/core/queue.h
+#ifndef QUEUE_H
+#define QUEUE_H
+
+#include <vector>
+#include <stdexcept>
+#include "../traffic/vehicle.h"
+
+// Generic Queue template class that forms the base of our queue system.
+// This implements the basic FIFO (First In, First Out) behavior required
+// for managing vehicles in lanes.
+template <typename T>
+class Queue {
+public:
+    // Default constructor initializes an empty queue with no processing time
+    Queue() : m_processingTimer(0.0f) {}
+
+    // Add an item to the back of the queue
+    void enqueue(const T& item) {
+        m_elements.push_back(item);
+    }
+
+    // Remove and return the front item from the queue
+    // Throws an exception if the queue is empty
+    T dequeue() {
+        if (empty()) {
+            throw std::runtime_error("Cannot dequeue from empty queue");
+        }
+
+        T frontItem = m_elements.front();
+        m_elements.erase(m_elements.begin());
+        return frontItem;
+    }
+
+    // Check if queue is empty
+    bool empty() const {
+        return m_elements.empty();
+    }
+
+    // Get number of items in queue
+    size_t size() const {
+        return m_elements.size();
+    }
+
+    // Get front item without removing it
+    // Throws an exception if the queue is empty
+    const T& front() const {
+        if (empty()) {
+            throw std::runtime_error("Queue is empty");
+        }
+        return m_elements.front();
+    }
+
+    // Processing time management - required by assignment specification
+    // Each vehicle needs 2 seconds of processing time
+
+    // Update the processing timer for current vehicle
+    void updateProcessingTime(float deltaTime) {
+        if (!empty()) {
+            m_processingTimer += deltaTime;
+        }
+    }
+
+    // Check if enough time has passed to process next vehicle
+    bool canProcess() const {
+        return m_processingTimer >= PROCESS_TIME;
+    }
+
+    // Reset processing timer after handling a vehicle
+    void resetProcessingTime() {
+        m_processingTimer = 0.0f;
+    }
+
+protected:
+    std::vector<T> m_elements;        // Container for queue elements
+    float m_processingTimer;          // Tracks time spent processing current vehicle
+
+    // Assignment requirement: each vehicle needs 2 seconds of processing
+    static constexpr float PROCESS_TIME = 2.0f;
+};
+
+// Specialized queue for managing vehicles in lanes
+// Adds priority handling capabilities as required by the assignment
+class LaneQueue : public Queue<Vehicle*> {
+public:
+    // Initialize queue with priority status
+    explicit LaneQueue(bool isPriority = false)
+        : Queue<Vehicle*>()
+        , m_isPriority(isPriority) {}
+
+    // Check if this queue needs priority processing
+    // According to assignment: priority needed when queue length >= 10
+    bool needsPriorityProcessing() const {
+        return m_isPriority && this->size() >= PRIORITY_THRESHOLD;
+    }
+
+    // Check if we can exit priority mode
+    // According to assignment: exit when queue length <= 5
+    bool canExitPriorityMode() const {
+        return this->size() <= PRIORITY_RESET_THRESHOLD;
+    }
+
+    // Check if this is a priority queue
+    bool isPriorityQueue() const {
+        return m_isPriority;
+    }
+
+private:
+    bool m_isPriority;   // Indicates if this is a priority lane queue
+
+    // Constants defined by assignment requirements
+    static constexpr size_t PRIORITY_THRESHOLD = 10;      // Start priority mode
+    static constexpr size_t PRIORITY_RESET_THRESHOLD = 5; // End priority mode
+};
+
+#endif // QUEUE_Hendif // QUEUE_H
+
+
+================================================================================
+File: src\core\simulation_manager.h
+================================================================================
+
+// src/core/simulation_manager.h
+#ifndef SIMULATION_MANAGER_H
+#define SIMULATION_MANAGER_H
+
+#include "../traffic/traffic_coordinator.h"
+#include "../traffic/traffic_communicator.h"
+#include <memory>
+
+class SimulationManager {
+public:
+    SimulationManager()
+        : m_coordinator(std::make_unique<TrafficCoordinator>(m_window.getRenderer()))
+        , m_communicator(std::make_unique<TrafficCommunicator>("./traffic_data"))
+        , m_accumulatedTime(0.0f) {
+    }
+
+    void update(float deltaTime) {
+        m_accumulatedTime += deltaTime;
+
+        // Process vehicles every 2 seconds as per assignment requirement
+        if (m_accumulatedTime >= 2.0f) {
+            // Read new vehicle data from files
+            auto vehicleData = m_communicator->readVehicleStates();
+            for (const auto& data : vehicleData) {
+                addVehicleToSimulation(data);
+            }
+
+            // Update traffic coordination
+            m_coordinator->update(deltaTime);
+
+            // Write current vehicle states back to files
+            for (const auto& vehicle : m_coordinator->getActiveVehicles()) {
+                m_communicator->writeVehicleState(*vehicle);
+            }
+
+            m_accumulatedTime = 0.0f;
+        }
+    }
+
+private:
+    std::unique_ptr<TrafficCoordinator> m_coordinator;
+    std::unique_ptr<TrafficCommunicator> m_communicator;
+    float m_accumulatedTime;
+
+    void addVehicleToSimulation(const VehicleData& data) {
+        // Create new vehicle from data and add to coordinator
+        Vehicle* vehicle = new Vehicle(data);
+        m_coordinator->addVehicle(vehicle);
+    }
+};
+
+#endif // SIMULATION_MANAGER_H
+
+
+================================================================================
+File: src\core\text.cpp
+================================================================================
+
+#include "text.h"
+#include "SDL3_ttf/SDL_ttf.h"
+#include <stdexcept>
+
+Text::Text(SDL_Renderer *renderer, TTF_Font *font)
+    : m_renderer(renderer), m_font(font), m_texture(nullptr),
+      m_color{255, 255, 255, 255}, m_width(0), m_height(0) {
+  if (!m_renderer || !m_font) {
+    throw std::runtime_error("Invalid renderer or font");
+  }
+}
+
+Text::~Text() { destroyTexture(); }
+
+void Text::setText(const std::string& text, SDL_Color color){
+    if (m_text == text &&
+        m_color.r == color.r &&
+        m_color.g == color.g &&
+        m_color.b == color.b &&
+        m_color.a == color.a) {
+        return; // No change needed
+    }
+
+    m_text = text;
+    m_color = color;
+    createTexture();
+}
+
+void Text::render(int x, int y) const {
+    if (!m_texture) return;
+
+    SDL_FRect dstRect = {
+        static_cast<float>(x),
+        static_cast<float>(y),
+        static_cast<float>(m_width),
+        static_cast<float>(m_height)
+    };
+
+    SDL_RenderTextureRotated(m_renderer, m_texture, nullptr, &dstRect, 0.0, nullptr, SDL_FLIP_NONE);
+}
+
+void Text::createTexture() {
+    destroyTexture();
+
+    if (m_text.empty()) return;
+
+    SDL_Surface* surface = TTF_RenderText_Blended(m_font, m_text.c_str(), m_text.size(), m_color);
+    if (!surface) {
+        throw std::runtime_error(SDL_GetError());
+    }
+
+    m_texture = SDL_CreateTextureFromSurface(m_renderer, surface);
+    m_width = surface->w;
+    m_height = surface->h;
+
+    SDL_DestroySurface(surface);
+
+    if (!m_texture) {
+        throw std::runtime_error(SDL_GetError());
+    }
+}
+
+void Text::destroyTexture() {
+    if (m_texture) {
+        SDL_DestroyTexture(m_texture);
+        m_texture = nullptr;
+    }
+}
+
+
+================================================================================
+File: src\core\text.h
+================================================================================
+
+
+
+#ifndef TEXT_H
+#define TEXT_H
+
+#include <SDL3/SDL.h>
+#include <SDL3_ttf/SDL_ttf.h>
+#include <string>
+
+class Text {
+public:
+  Text(SDL_Renderer *renderer, TTF_Font *font);
+  ~Text();
+
+  Text(const Text &) = delete;
+  Text &operator=(const Text) = delete;
+
+  void setText(const std::string &text, SDL_Color color = {255, 255, 255, 255});
+  void render(int x, int y) const;
+  [[nodiscard]] int getWidth() const { return m_width; }
+  [[nodiscard]] int getHeight() const { return m_height; }
+
+private:
+  SDL_Renderer *m_renderer;
+  TTF_Font *m_font;
+  SDL_Texture *m_texture;
+  std::string m_text;
+  SDL_Color m_color;
+  int m_width;
+  int m_height;
+
+  void createTexture();
+  void destroyTexture();
+};
+
+#endif // TEXT_H
+
+
+================================================================================
+File: src\core\traffic_queue.cpp
+================================================================================
+
+// src/core/traffic_queue.cpp
+#include "traffic_queue.h"
+
+TrafficQueue::TrafficQueue(bool isPriorityLane)
+    : m_isPriorityLane(isPriorityLane)
+    , m_processingTime(0.0f) {}
+
+void TrafficQueue::enqueue(Vehicle* vehicle) {
+    if (!vehicle) return;
+    m_vehicles.emplace_back(vehicle);
+    updateVehiclePositions();
+}
+
+Vehicle* TrafficQueue::dequeue() {
+    if (m_vehicles.empty()) return nullptr;
+
+    Vehicle* vehicle = m_vehicles.front().vehicle;
+    m_vehicles.erase(m_vehicles.begin());
+    updateVehiclePositions();
+    return vehicle;
+}
+
+Vehicle* TrafficQueue::peek() const {
+    return m_vehicles.empty() ? nullptr : m_vehicles.front().vehicle;
+}
+
+void TrafficQueue::update(float deltaTime) {
+    if (!m_vehicles.empty()) {
+        m_processingTime += deltaTime;
+    }
+}
+
+float TrafficQueue::getWaitTime() const {
+    if (m_vehicles.empty()) return 0.0f;
+
+    auto now = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>
+                   (now - m_vehicles.front().entryTime).count();
+    return static_cast<float>(duration);
+}
+
+bool TrafficQueue::needsPriorityProcessing() const {
+    return m_isPriorityLane && size() >= PRIORITY_THRESHOLD;
+}
+
+bool TrafficQueue::canExitPriorityMode() const {
+    return size() <= PRIORITY_RESET_THRESHOLD;
+}
+
+float TrafficQueue::calculateServiceTime() const {
+    // |V| = 1/n Σ|Li| formula implementation
+    size_t totalVehicles = size();
+    return totalVehicles * PROCESSING_TIME;
+}
+
+void TrafficQueue::updateVehiclePositions() {
+    const float VEHICLE_SPACING = 40.0f;  // Space between vehicles in queue
+
+    for (size_t i = 0; i < m_vehicles.size(); ++i) {
+        if (m_vehicles[i].vehicle) {
+            // Calculate position based on queue index
+            // This is a simplified version - you'll need to adjust based on lane orientation
+            float offset = static_cast<float>(i) * VEHICLE_SPACING;
+            // Set vehicle position - implementation depends on your coordinate system
+        }
+    }
+}
+
+
+
+================================================================================
+File: src\core\traffic_queue.h
+================================================================================
+
+#ifndef TRAFFIC_QUEUE_H
+#define TRAFFIC_QUEUE_H
+
+#include <vector>
+#include <chrono>
+#include "../traffic/vehicle.h"
+
+class TrafficQueue {
+public:
+    TrafficQueue(bool isPriorityLane = false);
+
+    // Core queue operations
+    void enqueue(Vehicle* vehicle);
+    Vehicle* dequeue();
+    Vehicle* peek() const;
+
+    // Queue state
+    bool empty() const { return m_vehicles.empty(); }
+    size_t size() const { return m_vehicles.size(); }
+    bool isPriorityLane() const { return m_isPriorityLane; }
+
+    // Time management
+    void update(float deltaTime);
+    float getWaitTime() const;
+    bool isReadyToProcess() const { return m_processingTime >= PROCESSING_TIME; }
+    void resetProcessingTime() { m_processingTime = 0.0f; }
+
+    // Priority management
+    bool needsPriorityProcessing() const;
+    bool canExitPriorityMode() const;
+
+private:
+    struct QueuedVehicle {
+        Vehicle* vehicle;
+        std::chrono::steady_clock::time_point entryTime;
+
+        QueuedVehicle(Vehicle* v)
+            : vehicle(v)
+            , entryTime(std::chrono::steady_clock::now()) {}
+    };
+
+    std::vector<QueuedVehicle> m_vehicles;
+    bool m_isPriorityLane;
+    float m_processingTime;
+
+    // Constants
+    static constexpr float PROCESSING_TIME = 2.0f;  // 2 seconds per vehicle
+    static constexpr int PRIORITY_THRESHOLD = 10;
+    static constexpr int PRIORITY_RESET_THRESHOLD = 5;
+
+    // Helper methods
+    float calculateServiceTime() const;
+    void updateVehiclePositions();
+};
+
+
+================================================================================
+File: src\core\window.cpp
+================================================================================
+
+// src/core/window.cpp
+#include "window.h"
+#include <stdexcept>
+
+// src/core/window.cpp
+Window::Window(const std::string &title, int width, int height)
+    : m_width(width), m_height(height) {
+
+  m_window =
+      SDL_CreateWindow(title.c_str(), width, height, SDL_WINDOW_RESIZABLE);
+
+  if (!m_window) {
+    throw std::runtime_error(SDL_GetError());
+  }
+
+  // SDL3 uses different renderer flags
+  m_renderer = SDL_CreateRenderer(m_window, nullptr);
+
+  if (!m_renderer) {
+    SDL_DestroyWindow(m_window);
+    throw std::runtime_error(SDL_GetError());
+  }
+}
+Window::~Window() {
+  // Clean up SDL resources
+  SDL_DestroyRenderer(m_renderer);
+  SDL_DestroyWindow(m_window);
+}
+
+void Window::clear() const {
+  // Set background color (dark gray)
+  SDL_SetRenderDrawColor(m_renderer, 40, 40, 40, 255);
+  SDL_RenderClear(m_renderer);
+}
+
+void Window::present() const { SDL_RenderPresent(m_renderer); }
+
+
+================================================================================
+File: src\core\window.h
+================================================================================
+
+// src/core/window.h
+#ifndef WINDOW_H
+#define WINDOW_H
+
+#include <SDL3/SDL.h>
+#include <string>
+
+class Window {
+public:
+    // Initialize window with given title and dimensions
+    Window(const std::string& title, int width, int height);
+    ~Window();
+
+    // Main window operations
+    void clear() const;       // Clear the rendering canvas
+    void present() const;     // Display the rendered content
+
+    // Access underlying SDL components
+    SDL_Renderer* getRenderer() { return m_renderer; }
+    SDL_Window* getWindow() { return m_window; }
+
+private:
+    SDL_Window* m_window;
+    SDL_Renderer* m_renderer;
+    int m_width;
+    int m_height;
+};
+
+#endif // WINDOW_H
+
+
+================================================================================
+File: src\generator\traffic_generator.cpp
+================================================================================
+
+// src/generator/traffic_generator.cpp
+#include "traffic_generator.h"
+
+TrafficGenerator::TrafficGenerator(SDL_Renderer *renderer)
+    : m_renderer(renderer), m_rng(std::random_device{}()),
+      m_generationTimer(0.0f),
+      m_generationInterval(1.0f / DEFAULT_GENERATION_RATE), m_vehicleCount(0),
+      m_priorityRatio(DEFAULT_PRIORITY_RATIO),
+      m_fileHandler(std::make_unique<FileHandler>("./traffic_data")) {
+
+  initializeSpawnPoints();
+}
+
+void TrafficGenerator::initializeSpawnPoints() {
+  const float CENTER_X = 640.0f;
+  const float CENTER_Y = 360.0f;
+  const float ROAD_WIDTH = 180.0f;
+  const float LANE_WIDTH = ROAD_WIDTH / 3.0f;
+
+  // Create spawn points for each incoming lane
+  m_spawnPoints.emplace_back(
+      Vector2D(CENTER_X - ROAD_WIDTH / 2 + LANE_WIDTH / 2, 0), Direction::SOUTH,
+      LaneId::AL1_INCOMING);
+
+  m_spawnPoints.emplace_back(
+      Vector2D(1280, CENTER_Y - ROAD_WIDTH / 2 + LANE_WIDTH / 2),
+      Direction::WEST, LaneId::BL1_INCOMING);
+
+  // Add spawn points for other lanes...
+}
+
+void TrafficGenerator::update(float deltaTime) {
+  m_generationTimer += deltaTime;
+
+  // Check if it's time to generate a new vehicle
+  if (m_generationTimer >= m_generationInterval) {
+    if (Vehicle *vehicle = generateVehicle()) {
+      // Write vehicle data to file for simulator
+      m_fileHandler->writeVehicleData(*vehicle);
+      delete vehicle; // Clean up as data is now in file
+    }
+    m_generationTimer = 0.0f;
+  }
+}
+
+// src/generator/traffic_generator.cpp
+
+// Add this implementation to your existing traffic_generator.cpp
+TrafficGenerator::SpawnPoint TrafficGenerator::selectSpawnPoint() {
+  // This method should randomly select a spawn point for new vehicles
+
+  // Use our random number generator to pick a random spawn point
+  std::uniform_int_distribution<> dist(0, m_spawnPoints.size() - 1);
+  size_t index = dist(m_rng);
+
+  // Return the selected spawn point
+  return m_spawnPoints[index];
+}
+
+Vehicle *TrafficGenerator::generateVehicle() {
+  // Select random spawn point
+  SpawnPoint spawn = selectSpawnPoint();
+
+  // Create new vehicle
+  Vehicle *vehicle = new Vehicle(m_renderer, m_vehicleCount++, spawn.lane);
+  vehicle->setPosition(spawn.position.x, spawn.position.y);
+
+  // Determine if this should be a priority vehicle
+  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+  if (dist(m_rng) < m_priorityRatio) {
+    // Convert to priority lane
+    switch (spawn.lane) {
+    case LaneId::AL1_INCOMING:
+      vehicle->setTargetLane(LaneId::AL2_PRIORITY);
+      break;
+      // Handle other lanes...
+    }
+  }
+
+  return vehicle;
+}
+
+
+================================================================================
+File: src\generator\traffic_generator.h
+================================================================================
+
+// src/generator/traffic_generator.h
+#ifndef TRAFFIC_GENERATOR_H
+#define TRAFFIC_GENERATOR_H
+
+#include <SDL3/SDL.h>
+#include "../traffic/vehicle.h"
+#include "../utils/math_utils.h"
+#include "../communication/file_handler.h"
+#include <random>
+
+class TrafficGenerator {
+public:
+    TrafficGenerator(SDL_Renderer* renderer);
+
+    // Core generation functions
+    void update(float deltaTime);
+    Vehicle* generateVehicle();
+
+    // Generation settings
+    void setGenerationRate(float vehiclesPerSecond);
+    void setPriorityRatio(float ratio);  // Ratio of vehicles going to priority lanes
+
+private:
+    struct SpawnPoint {
+        Vector2D position;
+        Direction facing;
+        LaneId lane;
+
+        SpawnPoint(const Vector2D& pos, Direction dir, LaneId l)
+            : position(pos), facing(dir), lane(l) {}
+    };
+
+    SDL_Renderer* m_renderer;
+    std::mt19937 m_rng;              // Random number generator
+    float m_generationTimer;         // Time since last generation
+    float m_generationInterval;      // Time between generations
+    int m_vehicleCount;              // Total vehicles generated
+    float m_priorityRatio;           // Ratio of priority vehicles
+    std::vector<SpawnPoint> m_spawnPoints;
+    std::unique_ptr<FileHandler> m_fileHandler;
+
+    static constexpr float DEFAULT_GENERATION_RATE = 0.5f;  // One vehicle every 2 seconds
+    static constexpr float DEFAULT_PRIORITY_RATIO = 0.3f;   // 30% priority vehicles
+
+    void initializeSpawnPoints();
+    SpawnPoint selectSpawnPoint();
+    LaneId determineTargetLane(const SpawnPoint& spawn);
+};
+
+#endif // TRAFFIC_GENERATOR_H
+
+
+================================================================================
+File: src\generator\vehicle_generator.cpp
+================================================================================
+
+
+
+================================================================================
+File: src\generator\vehicle_generator.h
+================================================================================
+
+// src/generator/vehicle_generator.h
+#ifndef VEHICLE_GENERATOR_H
+#define VEHICLE_GENERATOR_H
+
+#include <SDL3/SDL.h>
+#include <random>
+#include <queue>
+#include <memory>
+#include "../traffic/vehicle.h"
+#include "../traffic/traffic_queue.h"
+#include "../utils/math_utils.h"
+
+// Structure to define vehicle spawn points
+struct SpawnPoint {
+    Vector2D position;     // Where vehicles appear
+    Direction facing;      // Initial direction
+    LaneId lane;          // Which lane they spawn in
+
+    SpawnPoint(Vector2D pos, Direction dir, LaneId l)
+        : position(pos), facing(dir), lane(l) {}
+};
+
+class VehicleGenerator {
+public:
+    explicit VehicleGenerator(SDL_Renderer* renderer);
+
+    // Core generation functions
+    void update(float deltaTime);
+    Vehicle* generateVehicle();
+
+    // Generation settings
+    void setGenerationRate(float vehiclesPerSecond);
+    void setPriorityLaneRatio(float ratio);
+    
+    // Queue status queries
+    int getQueueLength(LaneId lane) const;
+    bool isPriorityLaneActive() const;
+
+private:
+    SDL_Renderer* m_renderer;
+    std::mt19937 m_rng;              // Random number generator
+    float m_generationTimer;         // Tracks time since last generation
+    float m_generationInterval;      // Time between vehicle spawns
+    int m_vehicleCount;              // Total vehicles generated
+    float m_priorityRatio;           // Ratio of vehicles going to priority lanes
+    std::vector<SpawnPoint> m_spawnPoints;
+
+    // Constants
+    static constexpr float DEFAULT_GENERATION_INTERVAL = 1.0f;  // 1 vehicle per second
+    static constexpr float DEFAULT_PRIORITY_RATIO = 0.3f;       // 30% to priority lanes
+    static constexpr float SPAWN_MARGIN = 50.0f;               // Distance from edge
+    
+    // Helper methods
+    void initializeSpawnPoints();
+    SpawnPoint selectSpawnPoint();
+    LaneId determineTargetLane(const SpawnPoint& spawn);
+    bool shouldGenerateVehicle() const;
+    
+    // Lane selection logic
+    bool isValidLaneChange(LaneId from, LaneId to) const;
+    bool isPriorityLane(LaneId lane) const;
+    Direction getLaneDirection(LaneId lane) const;
+    
+    // Vehicle initialization
+    void setupVehicleProperties(Vehicle* vehicle, const SpawnPoint& spawn);
+    Vector2D calculateSpawnPosition(const SpawnPoint& spawn) const;
+};
+
+#endif // VEHICLE_GENERATOR_H
+
+================================================================================
+File: src\logging\analytics_manager.cpp
+================================================================================
+
+// src/logging/analytics_manager.cpp
+#include "analytics_manager.h"
+#include <fstream>
+#include <iomanip>
+
+AnalyticsManager::AnalyticsManager(const DataLogger& logger)
+    : m_logger(logger) {}
+
+AnalyticsManager::LaneAnalysis AnalyticsManager::analyzeLane(LaneId lane) const {
+    LaneAnalysis analysis;
+    analysis.averageQueueLength = m_logger.getAverageQueueLength(lane);
+    analysis.peakQueueLength = calculatePeakQueueLength(lane);
+    // ... complete the analysis
+    return analysis;
+}
+
+float AnalyticsManager::calculateSystemEfficiency() const {
+    // Calculate overall system efficiency based on various metrics
+    const auto& history = m_logger.getMetricsHistory();
+    if (history.empty()) return 0.0f;
+
+    float totalEfficiency = 0.0f;
+    for (const auto& metrics : history) {
+        // Consider factors like wait times, queue lengths, and throughput
+        float waitTimeScore = 1.0f / (1.0f + metrics.averageWaitTime);
+        float queueScore = 0.0f;
+        for (const auto& [lane, length] : metrics.queueLengths) {
+            queueScore += 1.0f / (1.0f + length);
+        }
+        queueScore /= metrics.queueLengths.size();
+
+        totalEfficiency += (waitTimeScore + queueScore) / 2.0f;
+    }
+
+    return totalEfficiency / history.size();
+}
+
+void AnalyticsManager::generateReport(const std::string& outputPath) const {
+    std::ofstream report(outputPath);
+    if (!report.is_open()) return;
+
+    report << "Traffic System Analysis Report\n";
+    report << "=============================\n\n";
+
+    // System-wide metrics
+    report << "System Efficiency: "
+           << std::fixed << std::setprecision(2)
+           << calculateSystemEfficiency() * 100 << "%\n\n";
+
+    // Per-lane analysis
+    report << "Lane Analysis:\n";
+    for (LaneId lane = LaneId::AL1_INCOMING;
+         lane <= LaneId::DL3_FREELANE;
+         lane = static_cast<LaneId>(static_cast<int>(lane) + 1)) {
+
+        auto analysis = analyzeLane(lane);
+        report << "Lane " << getLaneString(lane) << ":\n"
+               << "  Average Queue Length: " << analysis.averageQueueLength << "\n"
+               << "  Peak Queue Length: " << analysis.peakQueueLength << "\n"
+               << "  Average Wait Time: " << analysis.averageWaitTime << "s\n"
+               << "  Total Vehicles: " << analysis.totalVehiclesProcessed << "\n\n";
+    }
+
+    // Write utilization statistics
+    auto utilization = calculateLaneUtilization();
+    report << "Lane Utilization:\n";
+    for (const auto& [lane, util] : utilization) {
+        report << "  " << getLaneString(lane) << ": "
+               << std::fixed << std::setprecision(1)
+               << util * 100 << "%\n";
+    }
+}
+
+
+================================================================================
+File: src\logging\analytics_manager.h
+================================================================================
+
+// src/logging/analytics_manager.h
+#ifndef ANALYTICS_MANAGER_H
+#define ANALYTICS_MANAGER_H
+
+#include "data_logger.h"
+#include <map>
+
+class AnalyticsManager {
+public:
+    AnalyticsManager(const DataLogger& logger);
+
+    // Analysis functions
+    struct LaneAnalysis {
+        float averageQueueLength;
+        float peakQueueLength;
+        float averageWaitTime;
+        float maxWaitTime;
+        int totalVehiclesProcessed;
+    };
+
+    LaneAnalysis analyzeLane(LaneId lane) const;
+    float calculateSystemEfficiency() const;
+    std::map<LaneId, float> calculateLaneUtilization() const;
+    void generateReport(const std::string& outputPath) const;
+
+private:
+    const DataLogger& m_logger;
+
+    // Helper methods
+    float calculatePeakQueueLength(LaneId lane) const;
+    float calculateAverageProcessingTime() const;
+};
+
+#endif // ANALYTICS_MANAGER_H
+
+
+================================================================================
+File: src\logging\data_logger.cpp
+================================================================================
+
+// src/logging/data_logger.cpp
+#include "data_logger.h"
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
+
+std::string TrafficMetrics::serialize() const {
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2);
+
+    // Write timestamp and global metrics
+    ss << timestamp << ","
+       << totalVehicles << ","
+       << (priorityMode ? "1" : "0") << ","
+       << averageWaitTime << ","
+       << maxWaitTime;
+
+    // Write queue lengths for each lane
+    for (const auto& [lane, length] : queueLengths) {
+        ss << "," << length;
+    }
+
+    // Write wait times for each lane
+    for (const auto& [lane, time] : waitTimes) {
+        ss << "," << time;
+    }
+
+    return ss.str();
+}
+
+DataLogger::DataLogger(const std::string& logDir)
+    : m_logDirectory(logDir) {
+    createLogDirectory();
+    startNewSession();
+}
+
+DataLogger::~DataLogger() {
+    endSession();
+}
+
+void DataLogger::createLogDirectory() {
+    namespace fs = std::filesystem;
+
+    // Create main log directory if it doesn't exist
+    if (!fs::exists(m_logDirectory)) {
+        fs::create_directories(m_logDirectory);
+    }
+}
+
+void DataLogger::startNewSession() {
+    std::lock_guard<std::mutex> lock(m_logMutex);
+
+    // Generate session ID based on timestamp
+    std::string sessionId = generateSessionId();
+    m_currentSessionPath = m_logDirectory + "/session_" + sessionId;
+
+    namespace fs = std::filesystem;
+    fs::create_directory(m_currentSessionPath);
+
+    // Open log files
+    m_metricsFile.open(m_currentSessionPath + "/metrics.csv");
+    m_eventFile.open(m_currentSessionPath + "/events.csv");
+
+    // Write headers
+    writeMetricsHeader();
+    writeEventHeader();
+}
+
+void DataLogger::endSession() {
+    std::lock_guard<std::mutex> lock(m_logMutex);
+
+    if (m_metricsFile.is_open()) {
+        m_metricsFile.close();
+    }
+    if (m_eventFile.is_open()) {
+        m_eventFile.close();
+    }
+}
+
+void DataLogger::logTrafficMetrics(const FlowCoordinator& coordinator) {
+    std::lock_guard<std::mutex> lock(m_logMutex);
+
+    // Create metrics record
+    TrafficMetrics metrics;
+    metrics.timestamp = SDL_GetTicks() / 1000.0f;
+    metrics.totalVehicles = coordinator.getTotalVehiclesProcessed();
+    metrics.priorityMode = coordinator.isPriorityModeActive();
+    metrics.averageWaitTime = coordinator.getAverageWaitTime();
+    metrics.maxWaitTime = coordinator.getMaxWaitTime();
+
+    // Get queue lengths and wait times for each lane
+    for (LaneId lane = LaneId::AL1_INCOMING;
+         lane <= LaneId::DL3_FREELANE;
+         lane = static_cast<LaneId>(static_cast<int>(lane) + 1)) {
+        metrics.queueLengths[lane] = coordinator.getLaneManager().getVehicleCount(lane);
+        metrics.waitTimes[lane] = coordinator.getLaneManager().getAverageWaitTime(lane);
+    }
+
+    // Add to history
+    m_metricsHistory.push_back(metrics);
+    trimHistory();
+
+    // Write to file
+    if (m_metricsFile.is_open()) {
+        m_metricsFile << metrics.serialize() << std::endl;
+    }
+}
+
+void DataLogger::logEvent(const std::string& event, const std::string& details) {
+    std::lock_guard<std::mutex> lock(m_logMutex);
+
+    if (m_eventFile.is_open()) {
+        float timestamp = SDL_GetTicks() / 1000.0f;
+        m_eventFile << std::fixed << std::setprecision(2)
+                   << timestamp << ","
+                   << event << ","
+                   << details << std::endl;
+    }
+}
+
+std::string DataLogger::generateSessionId() const {
+    auto now = std::chrono::system_clock::now();
+    auto time = std::chrono::system_clock::to_time_t(now);
+
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&time), "%Y%m%d_%H%M%S");
+    return ss.str();
+}
+
+void DataLogger::writeMetricsHeader() {
+    if (!m_metricsFile.is_open()) return;
+
+    m_metricsFile << "Timestamp,TotalVehicles,PriorityMode,AvgWaitTime,MaxWaitTime";
+
+    // Add headers for each lane's queue length
+    for (LaneId lane = LaneId::AL1_INCOMING;
+         lane <= LaneId::DL3_FREELANE;
+         lane = static_cast<LaneId>(static_cast<int>(lane) + 1)) {
+        m_metricsFile << ",Queue_" << getLaneString(lane);
+    }
+
+    // Add headers for each lane's wait time
+    for (LaneId lane = LaneId::AL1_INCOMING;
+         lane <= LaneId::DL3_FREELANE;
+         lane = static_cast<LaneId>(static_cast<int>(lane) + 1)) {
+        m_metricsFile << ",Wait_" << getLaneString(lane);
+    }
+
+    m_metricsFile << std::endl;
+}
+
+void DataLogger::writeEventHeader() {
+    if (!m_eventFile.is_open()) return;
+    m_eventFile << "Timestamp,Event,Details" << std::endl;
+}
+
+void DataLogger::trimHistory() {
+    if (m_metricsHistory.size() > MAX_HISTORY_SIZE) {
+        m_metricsHistory.erase(
+            m_metricsHistory.begin(),
+            m_metricsHistory.begin() + (m_metricsHistory.size() - MAX_HISTORY_SIZE)
+        );
+    }
+}
+
+float DataLogger::getAverageQueueLength(LaneId lane) const {
+    if (m_metricsHistory.empty()) return 0.0f;
+
+    float total = 0.0f;
+    for (const auto& metrics : m_metricsHistory) {
+        auto it = metrics.queueLengths.find(lane);
+        if (it != metrics.queueLengths.end()) {
+            total += it->second;
+        }
+    }
+
+    return total / m_metricsHistory.size();
+}
+
+float DataLogger::getAverageWaitTime() const {
+    if (m_metricsHistory.empty()) return 0.0f;
+
+    float total = 0.0f;
+    for (const auto& metrics : m_metricsHistory) {
+        total += metrics.averageWaitTime;
+    }
+
+    return total / m_metricsHistory.size();
+}
+
+
+
+================================================================================
+File: src\logging\data_logger.h
+================================================================================
+
+// src/logging/data_logger.h
+#ifndef DATA_LOGGER_H
+#define DATA_LOGGER_H
+
+#include <fstream>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <mutex>
+#include "../traffic/flow_coordinator.h"
+
+// Structure to hold traffic metrics at a point in time
+struct TrafficMetrics {
+    float timestamp;
+    std::map<LaneId, int> queueLengths;
+    std::map<LaneId, float> waitTimes;
+    int totalVehicles;
+    bool priorityMode;
+    float averageWaitTime;
+    float maxWaitTime;
+
+    // Serialization helper
+    std::string serialize() const;
+};
+
+class DataLogger {
+public:
+    DataLogger(const std::string& logDir);
+    ~DataLogger();
+
+    // Core logging functions
+    void logTrafficMetrics(const FlowCoordinator& coordinator);
+    void logEvent(const std::string& event, const std::string& details);
+    void startNewSession();
+    void endSession();
+
+    // Data access
+    std::vector<TrafficMetrics> getMetricsHistory() const;
+    float getAverageQueueLength(LaneId lane) const;
+    float getAverageWaitTime() const;
+
+private:
+    std::string m_logDirectory;
+    std::string m_currentSessionPath;
+    std::ofstream m_metricsFile;
+    std::ofstream m_eventFile;
+    std::vector<TrafficMetrics> m_metricsHistory;
+    std::mutex m_logMutex;
+
+    static constexpr int MAX_HISTORY_SIZE = 1000;  // Keep last 1000 metrics in memory
+
+    // Helper methods
+    void createLogDirectory();
+    std::string generateSessionId() const;
+    void writeMetricsHeader();
+    void writeEventHeader();
+    void trimHistory();
+};
+
+
+================================================================================
+File: src\traffic\flow_coordinator.cpp
+================================================================================
+
+
+// src/traffic/flow_coordinator.cpp
+#include "flow_coordinator.h"
+#include <algorithm>
+#include <cmath>
+
+FlowCoordinator::FlowCoordinator(SDL_Renderer* renderer)
+    : m_renderer(renderer)
+    , m_totalVehiclesProcessed(0)
+    , m_maxWaitTime(0.0f)
+    , m_priorityModeActive(false)
+    , m_stateTimer(0.0f) {
+
+    // Initialize core components
+    m_laneManager = std::make_unique<LaneManager>(renderer);
+    m_lightController = std::make_unique<LightController>(renderer);
+    m_laneChangeHandler = std::make_unique<LaneChangeHandler>(*m_laneManager);
+}
+
+void FlowCoordinator::update(float deltaTime) {
+    m_stateTimer += deltaTime;
+
+    // Update core components
+    m_laneManager->update(deltaTime);
+    m_lightController->update(deltaTime);
+
+    // Process traffic flow
+    updateVehicleStates(deltaTime);
+    checkIntersectionCrossings();
+    managePriorityFlow();
+    updateStatistics();
+    cleanupVehicles();
+}
+
+void FlowCoordinator::updateVehicleStates(float deltaTime) {
+    for (auto& node : m_activeVehicles) {
+        Vehicle* vehicle = node.vehicle;
+        if (!vehicle) continue;
+
+        // Update wait times
+        if (vehicle->getStatus() == VehicleStatus::WAITING) {
+            float waitTime = SDL_GetTicks() / 1000.0f - node.entryTime;
+            vehicle->setWaitTime(waitTime);
+            m_maxWaitTime = std::max(m_maxWaitTime, waitTime);
+        }
+
+        // Handle lane changes
+        if (vehicle->getStatus() == VehicleStatus::CHANGING_LANE) {
+            m_laneChangeHandler->updateLaneChange(vehicle, deltaTime);
+            continue;
+        }
+
+        // Check if vehicle can proceed
+        if (vehicle->getStatus() == VehicleStatus::WAITING && canVehicleProceed(vehicle)) {
+            vehicle->setStatus(VehicleStatus::MOVING);
+        }
+
+        // Process vehicle movement
+        if (vehicle->getStatus() == VehicleStatus::MOVING) {
+            // Calculate new position based on vehicle's direction and speed
+            Vector2D newPos = vehicle->getPosition();
+            float speed = vehicle->getSpeed() * deltaTime;
+
+            switch (vehicle->getFacingDirection()) {
+                case Direction::NORTH:
+                    newPos.y -= speed;
+                    break;
+                case Direction::SOUTH:
+                    newPos.y += speed;
+                    break;
+                case Direction::EAST:
+                    newPos.x += speed;
+                    break;
+                case Direction::WEST:
+                    newPos.x -= speed;
+                    break;
+            }
+
+            // Check for collisions before moving
+            if (!m_laneManager->checkCollision(vehicle, newPos)) {
+                vehicle->setPosition(newPos);
+            } else {
+                vehicle->setStatus(VehicleStatus::WAITING);
+            }
+        }
+    }
+}
+
+void FlowCoordinator::checkIntersectionCrossings() {
+    const float INTERSECTION_THRESHOLD = 30.0f;
+    const float CENTER_X = 640.0f;
+    const float CENTER_Y = 360.0f;
+
+    for (auto& node : m_activeVehicles) {
+        Vehicle* vehicle = node.vehicle;
+        if (!vehicle || vehicle->getStatus() != VehicleStatus::MOVING) continue;
+
+        Vector2D pos = vehicle->getPosition();
+        float distToIntersection = std::sqrt(
+            std::pow(pos.x - CENTER_X, 2) +
+            std::pow(pos.y - CENTER_Y, 2)
+        );
+
+        if (distToIntersection < INTERSECTION_THRESHOLD) {
+            // Check if vehicle can enter intersection
+            if (m_lightController->canProceedThroughIntersection(vehicle->getCurrentLaneId())) {
+                // Handle turn behavior for free lanes
+                if (isFreeTurnLane(vehicle->getCurrentLaneId())) {
+                    vehicle->setTurnBehaviour(TurnBehaviour::TURNING_LEFT);
+                }
+            } else {
+                vehicle->setStatus(VehicleStatus::WAITING);
+            }
+        }
+    }
+}
+
+void FlowCoordinator::managePriorityFlow() {
+    // Check priority conditions
+    bool needsPriority = false;
+    for (const auto& laneId : {LaneId::AL2_PRIORITY, LaneId::BL2_PRIORITY,
+                              LaneId::CL2_PRIORITY, LaneId::DL2_PRIORITY}) {
+        if (m_laneManager->getVehicleCount(laneId) >= 10) {
+            needsPriority = true;
+            break;
+        }
+    }
+
+    // Update priority mode
+    if (needsPriority != m_priorityModeActive) {
+        m_priorityModeActive = needsPriority;
+        m_lightController->setPriorityMode(needsPriority);
+    }
+}
+
+bool FlowCoordinator::canVehicleProceed(const Vehicle* vehicle) const {
+    if (!vehicle) return false;
+
+    // Check traffic light state
+    if (!m_lightController->canProceedThroughIntersection(vehicle->getCurrentLaneId())) {
+        return false;
+    }
+
+    // Check for vehicles ahead
+    Vector2D pos = vehicle->getPosition();
+    Vector2D ahead = pos;
+    const float CHECK_DISTANCE = 50.0f;
+
+    switch (vehicle->getFacingDirection()) {
+        case Direction::NORTH: ahead.y -= CHECK_DISTANCE; break;
+        case Direction::SOUTH: ahead.y += CHECK_DISTANCE; break;
+        case Direction::EAST:  ahead.x += CHECK_DISTANCE; break;
+        case Direction::WEST:  ahead.x -= CHECK_DISTANCE; break;
+    }
+
+    return !m_laneManager->checkCollision(vehicle, ahead);
+}
+
+void FlowCoordinator::cleanupVehicles() {
+    // Remove vehicles that have left the screen
+    const float BOUNDARY_MARGIN = 50.0f;
+
+    m_activeVehicles.erase(
+        std::remove_if(m_activeVehicles.begin(), m_activeVehicles.end(),
+            [this, BOUNDARY_MARGIN](const VehicleNode& node) {
+                if (!node.vehicle) return true;
+
+                Vector2D pos = node.vehicle->getPosition();
+                bool outOfBounds = pos.x < -BOUNDARY_MARGIN || pos.x > 1280 + BOUNDARY_MARGIN ||
+                                 pos.y < -BOUNDARY_MARGIN || pos.y > 720 + BOUNDARY_MARGIN;
+
+                if (outOfBounds) {
+                    delete node.vehicle;
+                    m_totalVehiclesProcessed++;
+                    return true;
+                }
+                return false;
+            }
+        ),
+        m_activeVehicles.end()
+    );
+}
+
+void FlowCoordinator::render() const {
+    // Render core components
+    m_laneManager->render();
+    m_lightController->render();
+
+    // Render all active vehicles
+    for (const auto& node : m_activeVehicles) {
+        if (node.vehicle) {
+            node.vehicle->render();
+        }
+    }
+}
+
+void FlowCoordinator::addVehicle(Vehicle* vehicle) {
+    if (!vehicle) return;
+    m_activeVehicles.emplace_back(vehicle);
+    m_laneManager->addVehicle(vehicle, vehicle->getCurrentLaneId());
+}
+
+void FlowCoordinator::removeVehicle(Vehicle* vehicle) {
+    if (!vehicle) return;
+
+    m_activeVehicles.erase(
+        std::remove_if(m_activeVehicles.begin(), m_activeVehicles.end(),
+            [vehicle](const VehicleNode& node) { return node.vehicle == vehicle; }
+        ),
+        m_activeVehicles.end()
+    );
+
+    m_laneManager->removeVehicle(vehicle);
+}
+
+float FlowCoordinator::getAverageWaitTime() const {
+    if (m_activeVehicles.empty()) return 0.0f;
+
+    float totalWaitTime = 0.0f;
+    int waitingCount = 0;
+
+    for (const auto& node : m_activeVehicles) {
+        if (node.vehicle && node.vehicle->getStatus() == VehicleStatus::WAITING) {
+            totalWaitTime += SDL_GetTicks() / 1000.0f - node.entryTime;
+            waitingCount++;
+        }
+    }
+
+    return waitingCount > 0 ? totalWaitTime / waitingCount : 0.0f;
+}
+
+
+
+================================================================================
+File: src\traffic\flow_coordinator.h
+================================================================================
+
+// src/traffic/flow_coordinator.h
+#ifndef FLOW_COORDINATOR_H
+#define FLOW_COORDINATOR_H
+
+#include "lane_manager.h"
+#include "light_controller.h"
+#include "lane_change_handler.h"
+#include <memory>
+#include <queue>
+
+class FlowCoordinator {
+public:
+    FlowCoordinator(SDL_Renderer* renderer);
+    ~FlowCoordinator() = default;
+
+    // Core coordination functions
+    void update(float deltaTime);
+    void render() const;
+
+    // Vehicle management
+    void addVehicle(Vehicle* vehicle);
+    void removeVehicle(Vehicle* vehicle);
+
+    // Traffic state queries
+    bool isPriorityModeActive() const { return m_priorityModeActive; }
+    int getTotalVehiclesProcessed() const { return m_totalVehiclesProcessed; }
+    float getAverageWaitTime() const;
+    float getMaxWaitTime() const { return m_maxWaitTime; }
+
+private:
+    // Core components
+    std::unique_ptr<LaneManager> m_laneManager;
+    std::unique_ptr<LightController> m_lightController;
+    std::unique_ptr<LaneChangeHandler> m_laneChangeHandler;
+    SDL_Renderer* m_renderer;
+
+    // Statistics tracking
+    int m_totalVehiclesProcessed;
+    float m_maxWaitTime;
+    bool m_priorityModeActive;
+    float m_stateTimer;
+
+    struct VehicleNode {
+        Vehicle* vehicle;
+        float entryTime;
+
+        VehicleNode(Vehicle* v)
+            : vehicle(v)
+            , entryTime(SDL_GetTicks() / 1000.0f) {}
+    };
+    std::vector<VehicleNode> m_activeVehicles;
+
+    // Helper methods
+    void updateVehicleStates(float deltaTime);
+    void checkIntersectionCrossings();
+    void updateStatistics();
+    void managePriorityFlow();
+    bool canVehicleProceed(const Vehicle* vehicle) const;
+    void cleanupVehicles();
+};
+
+#endif
+
+
+
+================================================================================
+File: src\traffic\intersection_controller.cpp
+================================================================================
+
+// src/traffic/intersection_controller.cpp
+#include "intersection_controller.h"
+#include <algorithm>
+#include <cmath>
+
+IntersectionController::IntersectionController(SDL_Renderer* renderer)
+    : m_renderer(renderer) {
+    initializeTrafficLights();
+}
+
+void IntersectionController::initializeTrafficLights() {
+    // Create traffic lights at each approach to the intersection
+    const float centerX = 640.0f;
+    const float centerY = 360.0f;
+    const float offset = 90.0f;  // Offset from intersection center
+
+    // Create and position traffic lights
+    m_trafficLights[NORTH_LIGHT] = std::make_unique<TrafficLight>(
+        m_renderer, centerX - offset, centerY - offset, true);
+    m_trafficLights[EAST_LIGHT] = std::make_unique<TrafficLight>(
+        m_renderer, centerX + offset, centerY - offset, false);
+    m_trafficLights[SOUTH_LIGHT] = std::make_unique<TrafficLight>(
+        m_renderer, centerX + offset, centerY + offset, true);
+    m_trafficLights[WEST_LIGHT] = std::make_unique<TrafficLight>(
+        m_renderer, centerX - offset, centerY + offset, false);
+
+    // Set initial states
+    synchronizeTrafficLights();
+}
+
+void IntersectionController::update(float deltaTime) {
+    // Update all traffic lights
+    for (auto& light : m_trafficLights) {
+        light->update(deltaTime);
+    }
+
+    // Maintain traffic light synchronization
+    synchronizeTrafficLights();
+
+    // Clean up vehicles that have left the intersection
+    m_vehiclesInIntersection.erase(
+        std::remove_if(m_vehiclesInIntersection.begin(),
+                      m_vehiclesInIntersection.end(),
+                      [this](Vehicle* vehicle) {
+                          return !isVehicleInIntersectionBounds(vehicle);
+                      }),
+        m_vehiclesInIntersection.end());
+}
+
+void IntersectionController::synchronizeTrafficLights() {
+    // Ensure opposing traffic lights are synchronized
+    if (m_trafficLights[NORTH_LIGHT]->getState() !=
+        m_trafficLights[SOUTH_LIGHT]->getState()) {
+        m_trafficLights[SOUTH_LIGHT]->setState(
+            m_trafficLights[NORTH_LIGHT]->getState());
+    }
+
+    if (m_trafficLights[EAST_LIGHT]->getState() !=
+        m_trafficLights[WEST_LIGHT]->getState()) {
+        m_trafficLights[WEST_LIGHT]->setState(
+            m_trafficLights[EAST_LIGHT]->getState());
+    }
+
+    // Ensure perpendicular lights are opposite
+    if (m_trafficLights[NORTH_LIGHT]->isGreen()) {
+        m_trafficLights[EAST_LIGHT]->setState(LightState::RED);
+        m_trafficLights[WEST_LIGHT]->setState(LightState::RED);
+    } else if (m_trafficLights[EAST_LIGHT]->isGreen()) {
+        m_trafficLights[NORTH_LIGHT]->setState(LightState::RED);
+        m_trafficLights[SOUTH_LIGHT]->setState(LightState::RED);
+    }
+}
+
+bool IntersectionController::canVehicleEnterIntersection(
+    const Vehicle* vehicle) const {
+    if (!vehicle) return false;
+
+    // Check if intersection is at capacity
+    if (m_vehiclesInIntersection.size() >= MAX_VEHICLES) {
+        return false;
+    }
+
+    // Check traffic light state for vehicle's direction
+    if (!isLaneActive(vehicle->getCurrentLaneId())) {
+        return false;
+    }
+
+    // Check for potential collisions
+    if (checkCollisionRisk(vehicle)) {
+        return false;
+    }
+
+    // Check if the intended path is clear
+    return isPathClear(vehicle);
+}
+
+bool IntersectionController::checkCollisionRisk(const Vehicle* vehicle) const {
+    if (m_vehiclesInIntersection.empty()) return false;
+
+    Direction vehicleDir = vehicle->getFacingDirection();
+    Vector2D vehiclePos = vehicle->getPosition();
+
+    for (const Vehicle* other : m_vehiclesInIntersection) {
+        // Skip if same vehicle
+        if (vehicle == other) continue;
+
+        Direction otherDir = other->getFacingDirection();
+        Vector2D otherPos = other->getPosition();
+
+        // Calculate distance between vehicles
+        float distance = std::sqrt(
+            std::pow(vehiclePos.x - otherPos.x, 2) +
+            std::pow(vehiclePos.y - otherPos.y, 2));
+
+        // Check if vehicles are too close
+        if (distance < SAFE_DISTANCE) {
+            return true;
+        }
+
+        // Check if directions conflict
+        if (areDirectionsConflicting(vehicleDir, otherDir)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool IntersectionController::isPathClear(const Vehicle* vehicle) const {
+    if (!vehicle) return false;
+
+    // Get vehicle's intended path through intersection
+    Vector2D startPos = vehicle->getPosition();
+    Vector2D endPos;
+
+    // Calculate end position based on vehicle's turn intention
+    switch (vehicle->getFacingDirection()) {
+        case Direction::NORTH:
+            endPos = {startPos.x, startPos.y - INTERSECTION_SIZE};
+            break;
+        case Direction::SOUTH:
+            endPos = {startPos.x, startPos.y + INTERSECTION_SIZE};
+            break;
+        case Direction::EAST:
+            endPos = {startPos.x + INTERSECTION_SIZE, startPos.y};
+            break;
+        case Direction::WEST:
+            endPos = {startPos.x - INTERSECTION_SIZE, startPos.y};
+            break;
+    }
+
+    // Check for vehicles along the path
+    for (const Vehicle* other : m_vehiclesInIntersection) {
+        Vector2D otherPos = other->getPosition();
+
+        // Calculate distance to path
+        float distance = pointToLineDistance(otherPos, startPos, endPos);
+
+        if (distance < SAFE_DISTANCE) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void IntersectionController::render() const {
+    // Render traffic lights
+    for (const auto& light : m_trafficLights) {
+        light->render();
+    }
+
+    // Debug visualization of intersection boundaries
+    SDL_FRect intersectionBounds = {
+        640.0f - INTERSECTION_SIZE/2,
+        360.0f - INTERSECTION_SIZE/2,
+        INTERSECTION_SIZE,
+        INTERSECTION_SIZE
+    };
+
+    SDL_SetRenderDrawColor(m_renderer, 100, 100, 100, 255);
+    SDL_RenderDrawRect(m_renderer, &intersectionBounds);
+}
+
+bool IntersectionController::areDirectionsConflicting(
+    Direction dir1, Direction dir2) const {
+    // Opposite directions never conflict
+    if (dir1 == getOppositeDirection(dir2)) {
+        return false;
+    }
+
+    // Adjacent directions might conflict depending on turns
+    return true;
+}
+
+Direction IntersectionController::getOppositeDirection(Direction dir) const {
+    switch (dir) {
+        case Direction::NORTH: return Direction::SOUTH;
+        case Direction::SOUTH: return Direction::NORTH;
+        case Direction::EAST:  return Direction::WEST;
+        case Direction::WEST:  return Direction::EAST;
+        default: return dir;
+    }
+}
+
+// Helper function to calculate distance from a point to a line segment
+float IntersectionController::pointToLineDistance(
+    const Vector2D& point,
+    const Vector2D& lineStart,
+    const Vector2D& lineEnd) const {
+
+    float numerator = std::abs(
+        (lineEnd.y - lineStart.y) * point.x -
+        (lineEnd.x - lineStart.x) * point.y +
+        lineEnd.x * lineStart.y -
+        lineEnd.y * lineStart.x);
+
+    float denominator = std::sqrt(
+        std::pow(lineEnd.y - lineStart.y, 2) +
+        std::pow(lineEnd.x - lineStart.x, 2));
+
+    return numerator / denominator;
+}
+
+
+================================================================================
+File: src\traffic\intersection_controller.h
+================================================================================
+
+// src/traffic/intersection_controller.h
+#ifndef INTERSECTION_CONTROLLER_H
+#define INTERSECTION_CONTROLLER_H
+
+#include "traffic_light.h"
+#include "vehicle.h"
+#include <array>
+#include <memory>
+#include <vector>
+
+// The IntersectionController class coordinates all activities at the intersection,
+// including traffic light synchronization, vehicle movement permissions, and
+// conflict resolution.
+class IntersectionController {
+public:
+    IntersectionController(SDL_Renderer* renderer);
+    ~IntersectionController() = default;
+
+    // Core control functions
+    void update(float deltaTime);
+    void render() const;
+
+    // Vehicle management
+    bool canVehicleEnterIntersection(const Vehicle* vehicle) const;
+    bool canVehicleTurn(const Vehicle* vehicle) const;
+    void registerVehicleInIntersection(Vehicle* vehicle);
+    void unregisterVehicleFromIntersection(Vehicle* vehicle);
+
+    // Traffic light control
+    bool isLaneActive(LaneId lane) const;
+    void synchronizeTrafficLights();
+
+    // Intersection state queries
+    bool isIntersectionClear() const;
+    int getVehicleCount() const;
+
+private:
+    // Constants for intersection management
+    static constexpr float INTERSECTION_SIZE = 180.0f;  // Size of intersection box
+    static constexpr float SAFE_DISTANCE = 30.0f;       // Minimum distance between vehicles
+    static constexpr int MAX_VEHICLES = 4;              // Maximum vehicles in intersection
+
+    // Core components
+    SDL_Renderer* m_renderer;
+    std::array<std::unique_ptr<TrafficLight>, 4> m_trafficLights;
+    std::vector<Vehicle*> m_vehiclesInIntersection;
+
+    // Traffic light indices for easy reference
+    static constexpr int NORTH_LIGHT = 0;
+    static constexpr int EAST_LIGHT = 1;
+    static constexpr int SOUTH_LIGHT = 2;
+    static constexpr int WEST_LIGHT = 3;
+
+    // Helper methods
+    void initializeTrafficLights();
+    bool checkCollisionRisk(const Vehicle* vehicle) const;
+    bool isPathClear(const Vehicle* vehicle) const;
+    Direction getOppositeDirection(Direction dir) const;
+    bool areDirectionsConflicting(Direction dir1, Direction dir2) const;
+};
+
+#endif // INTERSECTION_CONTROLLER_H
+
+
+================================================================================
+File: src\traffic\lane.cpp
+================================================================================
+
+// src/traffic/lane.cp// src/traffic/lane.cpp
+#include "lane.h"
+#include <cmath>
+#include <algorithm>
+
+// Initialize a new lane with all its properties
+Lane::Lane(SDL_Renderer* renderer, LaneId id, Vector2D start, Vector2D end, bool isPriority)
+    : m_renderer(renderer)
+    , m_id(id)
+    , m_startPos(start)
+    , m_endPos(end)
+    , m_isPriority(isPriority)
+    , m_processingTimer(0.0f) {
+}
+
+void Lane::update(float deltaTime) {
+    // If we have vehicles in the queue, we need to update our processing timer
+    // This implements the assignment's 2-second processing time requirement
+    if (!m_queue.empty()) {
+        m_processingTimer += deltaTime;
+    }
+
+    // Make sure all vehicles are properly positioned in the queue
+    updateVehiclePositions();
+}
+
+Vehicle* Lane::processNextVehicle() {
+    // We can only process a vehicle if:
+    // 1. There is a vehicle waiting
+    // 2. We've waited the required 2 seconds
+    if (m_queue.empty() || m_processingTimer < PROCESS_TIME) {
+        return nullptr;
+    }
+
+    // Get the next vehicle and remove it from the queue
+    Vehicle* vehicle = m_queue.front();
+    m_queue.pop();
+
+    // Reset our timer for the next vehicle
+    m_processingTimer = 0.0f;
+
+    return vehicle;
+}
+
+void Lane::addVehicle(Vehicle* vehicle) {
+    if (!vehicle) return;  // Safety check
+
+    // Add to queue and update all vehicle positions
+    m_queue.push(vehicle);
+    updateVehiclePositions();
+}
+
+bool Lane::removeVehicle(Vehicle* vehicle) {
+    // Since std::queue doesn't support direct removal,
+    // we need to recreate the queue without the target vehicle
+    std::queue<Vehicle*> newQueue;
+    bool found = false;
+
+    // Go through all vehicles, keeping all except the target
+    while (!m_queue.empty()) {
+        Vehicle* current = m_queue.front();
+        m_queue.pop();
+
+        if (current != vehicle) {
+            newQueue.push(current);
+        } else {
+            found = true;
+        }
+    }
+
+    // Replace our queue with the new one
+    m_queue = std::move(newQueue);
+
+    // If we found and removed a vehicle, update positions
+    if (found) {
+        updateVehiclePositions();
+    }
+
+    return found;
+}
+
+int Lane::getQueueLength() const {
+    return static_cast<int>(m_queue.size());
+}
+
+bool Lane::hasWaitingVehicles() const {
+    return !m_queue.empty();
+}
+
+bool Lane::isPriorityLane() const {
+    return m_isPriority;
+}
+
+Vehicle* Lane::getNextVehicle() const {
+    return m_queue.empty() ? nullptr : m_queue.front();
+}
+
+void Lane::updateVehiclePositions() {
+    // Create a temporary queue to process all vehicles
+    std::queue<Vehicle*> tempQueue = m_queue;
+    size_t position = 0;
+
+    // Position each vehicle in sequence
+    while (!tempQueue.empty()) {
+        Vehicle* vehicle = tempQueue.front();
+        tempQueue.pop();
+
+        if (vehicle) {
+            positionVehicleInQueue(vehicle, position++);
+        }
+    }
+}
+
+void Lane::positionVehicleInQueue(Vehicle* vehicle, size_t queuePosition) {
+    if (!vehicle) return;
+
+    // Calculate how far along the lane this vehicle should be
+    float offset = static_cast<float>(queuePosition) * VEHICLE_SPACING;
+
+    // Calculate the lane's direction vector
+    Vector2D direction = {
+        m_endPos.x - m_startPos.x,
+        m_endPos.y - m_startPos.y
+    };
+
+    // Normalize the direction vector
+    float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+    direction.x /= length;
+    direction.y /= length;
+
+    // Calculate the vehicle's new position
+    Vector2D newPos = {
+        m_startPos.x + direction.x * offset,
+        m_startPos.y + direction.y * offset
+    };
+
+    // Update the vehicle's position
+    vehicle->setPosition(newPos.x, newPos.y);
+}
+
+void Lane::render() const {
+    // Choose lane color - priority lanes are brighter
+    SDL_SetRenderDrawColor(m_renderer,
+        m_isPriority ? 255 : 200,  // Brighter for priority lanes
+        200, 200, 255);
+
+    // Draw the lane line
+    SDL_RenderLine(m_renderer,
+        static_cast<int>(m_startPos.x),
+        static_cast<int>(m_startPos.y),
+        static_cast<int>(m_endPos.x),
+        static_cast<int>(m_endPos.y));
+
+    // Render each vehicle in the queue
+    std::queue<Vehicle*> renderQueue = m_queue;
+    while (!renderQueue.empty()) {
+        Vehicle* vehicle = renderQueue.front();
+        renderQueue.pop();
+
+        if (vehicle) {
+            vehicle->render();
+        }
+    }
+}
+
+bool Lane::isVehicleAtIntersection(const Vehicle* vehicle) const {
+    if (!vehicle) return false;
+    return calculateDistanceToIntersection(vehicle->getPosition()) < INTERSECTION_THRESHOLD;
+}
+
+float Lane::calculateDistanceToIntersection(const Vector2D& pos) const {
+    // Calculate straight-line distance to intersection (lane end)
+    float dx = m_endPos.x - pos.x;
+    float dy = m_endPos.y - pos.y;
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+
+================================================================================
+File: src\traffic\lane.h
+================================================================================
+
+// src/traffic/lane.h
+#ifndef LANE_H
+#define LANE_H
+
+#include <SDL3/SDL.h>
+#include "../common/types.h"
+#include "vehicle.h"
+#include <queue>
+
+class Lane {
+public:
+    // Constructor that matches how it's being called in the code
+    Lane(SDL_Renderer* renderer, LaneId id, Vector2D start = Vector2D(),
+         Vector2D end = Vector2D(), bool isPriority = false);
+
+    // Core functionality
+    void update(float deltaTime);
+    void render() const;
+
+    // Vehicle management
+    void addVehicle(Vehicle* vehicle);
+    Vehicle* processNextVehicle();
+    int getQueueLength() const;
+    bool isPriorityLane() const;
+
+private:
+    SDL_Renderer* m_renderer;
+    LaneId m_id;
+    Vector2D m_startPos;
+    Vector2D m_endPos;
+    bool m_isPriority;
+    float m_processingTimer;
+    std::queue<Vehicle*> m_queue;
+
+    static constexpr float PROCESS_TIME = 2.0f;
+};
+
+#endif // LANE_H
+
+
+================================================================================
+File: src\traffic\lane_change_handler.cpp
+================================================================================
+
+
+// src/traffic/lane_change_handler.cpp
+#include "lane_change_handler.h"
+
+LaneChangeHandler::LaneChangeHandler(LaneManager& laneManager)
+    : m_laneManager(laneManager) {}
+
+bool LaneChangeHandler::canChangeLane(const Vehicle* vehicle, LaneId targetLane) const {
+    if (!vehicle) return false;
+
+    // Verify basic conditions
+    if (!isValidLaneChange(vehicle->getCurrentLaneId(), targetLane)) {
+        return false;
+    }
+
+    // Check distance from intersection
+    float distanceToIntersection = calculateLaneChangeDistance(vehicle);
+    if (distanceToIntersection < LaneChangeConstants::LANE_CHANGE_THRESHOLD) {
+        return false;
+    }
+
+    // Verify space in target lane
+    if (!checkLaneChangeSpace(vehicle, targetLane)) {
+        return false;
+    }
+
+    // Check vehicle state
+    if (vehicle->getStatus() != VehicleStatus::MOVING) {
+        return false;
+    }
+
+    return true;
+}
+
+void LaneChangeHandler::performLaneChange(Vehicle* vehicle, LaneId targetLane) {
+    if (!vehicle || !canChangeLane(vehicle, targetLane)) return;
+
+    // Store original lane for reference
+    LaneId originalLane = vehicle->getCurrentLaneId();
+
+    // Begin lane change process
+    vehicle->setStatus(VehicleStatus::CHANGING_LANE);
+    vehicle->setLaneChangeProgress(0.0f);
+    vehicle->setTargetLane(targetLane);
+
+    // Calculate intermediate positions
+    Vector2D startPos = vehicle->getPosition();
+    Vector2D endPos = m_laneManager.getLanePosition(targetLane, vehicle->getLanePosition());
+    vehicle->setLaneChangePoints(startPos, endPos);
+
+    // Update vehicle's current lane
+    vehicle->setCurrentLane(targetLane);
+}
+
+void LaneChangeHandler::updateLaneChange(Vehicle* vehicle, float deltaTime) {
+    if (!vehicle || vehicle->getStatus() != VehicleStatus::CHANGING_LANE) return;
+
+    // Update lane change progress
+    float progress = vehicle->getLaneChangeProgress();
+    progress += deltaTime / LaneChangeConstants::CHANGE_DURATION;
+
+    if (progress >= 1.0f) {
+        // Complete lane change
+        vehicle->setStatus(VehicleStatus::MOVING);
+        vehicle->setLaneChangeProgress(0.0f);
+        return;
+    }
+
+    // Calculate and set intermediate position
+    Vector2D newPos = calculateIntermediatePosition(vehicle, progress);
+
+    // Check for obstacles
+    if (!hasObstaclesInPath(vehicle, newPos)) {
+        vehicle->setPosition(newPos);
+        vehicle->setLaneChangeProgress(progress);
+    } else {
+        // Abort lane change if obstacle detected
+        vehicle->setStatus(VehicleStatus::MOVING);
+        vehicle->setLaneChangeProgress(0.0f);
+    }
+}
+
+bool LaneChangeHandler::checkLaneChangeSpace(const Vehicle* vehicle, LaneId targetLane) const {
+    if (!vehicle) return false;
+
+    // Get vehicles in target lane
+    const auto& targetVehicles = m_laneManager.getVehiclesInLane(targetLane);
+    Vector2D vehiclePos = vehicle->getPosition();
+
+    // Check distance to each vehicle in target lane
+    for (const auto* targetVehicle : targetVehicles) {
+        if (!targetVehicle) continue;
+
+        // Calculate distance between vehicles
+        Vector2D targetPos = targetVehicle->getPosition();
+        float distance = std::sqrt(
+            std::pow(vehiclePos.x - targetPos.x, 2) +
+            std::pow(vehiclePos.y - targetPos.y, 2)
+        );
+
+        // Check if distance is less than safe threshold
+        if (distance < LaneChangeConstants::SAFE_DISTANCE) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool LaneChangeHandler::isValidLaneChange(LaneId currentLane, LaneId targetLane) const {
+    // Check if lanes are adjacent
+    if (!checkAdjacentLanes(currentLane, targetLane)) {
+        return false;
+    }
+
+    // Prevent changes from/to free turn lanes after certain point
+    if (isFreeTurnLane(currentLane) || isFreeTurnLane(targetLane)) {
+        return false;
+    }
+
+    // Validate direction of change
+    return isValidChangeDirection(currentLane, targetLane);
+}
+
+float LaneChangeHandler::calculateLaneChangeDistance(const Vehicle* vehicle) const {
+    if (!vehicle) return 0.0f;
+
+    // Get intersection center
+    const float CENTER_X = 640.0f;
+    const float CENTER_Y = 360.0f;
+
+    // Calculate distance to intersection center
+    Vector2D pos = vehicle->getPosition();
+    return std::sqrt(
+        std::pow(pos.x - CENTER_X, 2) +
+        std::pow(pos.y - CENTER_Y, 2)
+    );
+}
+
+bool LaneChangeHandler::checkAdjacentLanes(LaneId current, LaneId target) const {
+    // Map of valid adjacent lanes
+    static const std::map<LaneId, std::vector<LaneId>> adjacentLanes = {
+        {LaneId::AL1_INCOMING, {LaneId::AL2_PRIORITY}},
+        {LaneId::AL2_PRIORITY, {LaneId::AL1_INCOMING, LaneId::AL3_FREELANE}},
+        {LaneId::AL3_FREELANE, {LaneId::AL2_PRIORITY}},
+        // Add mappings for other lanes...
+    };
+
+    auto it = adjacentLanes.find(current);
+    if (it == adjacentLanes.end()) return false;
+
+    return std::find(it->second.begin(), it->second.end(), target) != it->second.end();
+}
+
+Vector2D LaneChangeHandler::calculateIntermediatePosition(const Vehicle* vehicle, float progress) const {
+    if (!vehicle) return Vector2D();
+
+    // Get start and end points
+    Vector2D start = vehicle->getLaneChangeStartPoint();
+    Vector2D end = vehicle->getLaneChangeEndPoint();
+
+    // Use smooth interpolation for natural movement
+    float smoothProgress = progress * progress * (3 - 2 * progress);  // Smoothstep function
+
+    return Vector2D(
+        start.x + (end.x - start.x) * smoothProgress,
+        start.y + (end.y - start.y) * smoothProgress
+    );
+}
+
+bool LaneChangeHandler::hasObstaclesInPath(const Vehicle* vehicle, const Vector2D& targetPos) const {
+    if (!vehicle) return true;
+
+    // Get all nearby vehicles
+    const auto& nearbyVehicles = m_laneManager.getNearbyVehicles(vehicle->getPosition());
+
+    // Check for potential collisions along path
+    for (const auto* other : nearbyVehicles) {
+        if (other == vehicle) continue;
+
+        // Calculate minimum distance between vehicles
+        float distance = calculateMinimumDistance(
+            vehicle->getPosition(), targetPos,
+            other->getPosition()
+        );
+
+        if (distance < LaneChangeConstants::SAFE_DISTANCE) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+
+================================================================================
+File: src\traffic\lane_change_handler.h
+================================================================================
+
+// src/traffic/lane_change_handler.h
+#ifndef LANE_CHANGE_HANDLER_H
+#define LANE_CHANGE_HANDLER_H
+
+#include "vehicle.h"
+#include "lane_manager.h"
+#include <cmath>
+
+// Constants for lane change behavior
+struct LaneChangeConstants {
+    static constexpr float SAFE_DISTANCE = 50.0f;           // Minimum safe distance between vehicles
+    static constexpr float LANE_CHANGE_THRESHOLD = 100.0f;  // Minimum distance from intersection
+    static constexpr float MAX_CHANGE_ANGLE = 45.0f;        // Maximum angle for lane change
+    static constexpr float CHANGE_DURATION = 2.0f;          // Time to complete lane change
+};
+
+class LaneChangeHandler {
+public:
+    LaneChangeHandler(LaneManager& laneManager);
+
+    // Core lane change operations
+    bool canChangeLane(const Vehicle* vehicle, LaneId targetLane) const;
+    void performLaneChange(Vehicle* vehicle, LaneId targetLane);
+    void updateLaneChange(Vehicle* vehicle, float deltaTime);
+
+    // Lane change status queries
+    bool isChangingLane(const Vehicle* vehicle) const;
+    float getLaneChangeProgress(const Vehicle* vehicle) const;
+
+private:
+    LaneManager& m_laneManager;
+
+    // Helper methods for lane change validation
+    bool checkLaneChangeSpace(const Vehicle* vehicle, LaneId targetLane) const;
+    bool isValidLaneChange(LaneId currentLane, LaneId targetLane) const;
+    float calculateLaneChangeDistance(const Vehicle* vehicle) const;
+    bool checkAdjacentLanes(LaneId current, LaneId target) const;
+
+    // Lane change path calculations
+    Vector2D calculateIntermediatePosition(const Vehicle* vehicle, float progress) const;
+    bool hasObstaclesInPath(const Vehicle* vehicle, const Vector2D& targetPos) const;
+};
+
+#endif
+
+
+
+================================================================================
+File: src\traffic\lane_processor.h
+================================================================================
+
+// src/traffic/lane_proce// src/traffic/lane_processor.h
+#ifndef LANE_PROCESSOR_H
+#define LANE_PROCESSOR_H
+
+#include "vehicle.h" // For Vehicle class
+#include <memory>    // For smart pointers
+#include <queue>     // For std::queue
+
+class LaneProcessor {
+public:
+  // Initialize with no processing time
+  LaneProcessor() : m_processingTimer(0.0f) {}
+
+  // Core processing methods
+  void update(float deltaTime) {
+    if (!m_vehicleQueue.empty()) {
+      m_processingTimer += deltaTime;
+    }
+  }
+
+  bool canProcessVehicle() const { return m_processingTimer >= PROCESS_TIME; }
+
+  size_t getQueueLength() const { return m_vehicleQueue.size(); }
+
+  void resetProcessingTimer() { m_processingTimer = 0.0f; }
+
+private:
+  std::queue<Vehicle *>
+      m_vehicleQueue;      // Queue of vehicles waiting to be processed
+  float m_processingTimer; // Time spent processing current vehicle
+  static constexpr float PROCESS_TIME = 2.0f;
+};
+
+#endif // LANE_PROCESSOR_H
+
+
+================================================================================
+File: src\traffic\priority_queue.h
+================================================================================
+
+// src/traffic/priority_queue.h
+#ifndef PRIORITY_QUEUE_H
+#define PRIORITY_QUEUE_H
+
+#include "vehicle.h"
+#include <chrono>
+
+class PriorityQueue {
+private:
+    struct Node {
+        Vehicle* vehicle;
+        float priority;
+        std::chrono::steady_clock::time_point entryTime;
+        Node* next;
+
+        Node(Vehicle* v, float p)
+            : vehicle(v)
+            , priority(p)
+            , entryTime(std::chrono::steady_clock::now())
+            , next(nullptr) {}
+    };
+
+    Node* head;
+    int size;
+    float processingTime;
+    bool isPriorityLane;
+    static constexpr float PROCESS_TIME = 2.0f; // 2 seconds per vehicle
+    static constexpr int PRIORITY_THRESHOLD = 10;
+    static constexpr int PRIORITY_RESET_THRESHOLD = 5;
+
+public:
+    PriorityQueue(bool isPriority = false)
+        : head(nullptr)
+        , size(0)
+        , processingTime(0.0f)
+        , isPriorityLane(isPriority) {}
+
+    ~PriorityQueue() {
+        while (head != nullptr) {
+            Node* temp = head;
+            head = head->next;
+            delete temp;
+        }
+    }
+
+    // Adds a vehicle to the queue with priority handling
+    void enqueue(Vehicle* vehicle, float basePriority = 0.0f) {
+        float priority = basePriority;
+
+        // Increase priority if queue length exceeds threshold
+        if (isPriorityLane && size >= PRIORITY_THRESHOLD) {
+            priority += 1000.0f;
+        }
+
+        Node* newNode = new Node(vehicle, priority);
+
+        // Insert based on priority
+        if (head == nullptr || priority > head->priority) {
+            newNode->next = head;
+            head = newNode;
+        } else {
+            Node* current = head;
+            while (current->next != nullptr &&
+                   current->next->priority >= priority) {
+                current = current->next;
+            }
+            newNode->next = current->next;
+            current->next = newNode;
+        }
+        size++;
+    }
+
+    // Removes and returns the highest priority vehicle
+    Vehicle* dequeue() {
+        if (empty()) return nullptr;
+
+        Node* temp = head;
+        Vehicle* vehicle = temp->vehicle;
+        head = head->next;
+        delete temp;
+        size--;
+
+        return vehicle;
+    }
+
+    // Queue state queries
+    bool empty() const { return head == nullptr; }
+    int getSize() const { return size; }
+    bool isPriority() const { return isPriorityLane; }
+
+    // Gets wait time of front vehicle
+    float getWaitTime() const {
+        if (empty()) return 0.0f;
+        auto now = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::seconds>
+                       (now - head->entryTime).count();
+        return static_cast<float>(duration);
+    }
+
+    // Processing time management
+    void updateProcessingTime(float deltaTime) {
+        if (!empty()) {
+            processingTime += deltaTime;
+        }
+    }
+
+    bool readyToProcess() const {
+        return processingTime >= PROCESS_TIME;
+    }
+
+    void resetProcessingTime() {
+        processingTime = 0.0f;
+    }
+
+    // Priority management
+    bool needsPriorityProcessing() const {
+        return isPriorityLane && size >= PRIORITY_THRESHOLD;
+    }
+
+    bool canExitPriorityMode() const {
+        return size <= PRIORITY_RESET_THRESHOLD;
+    }
+};
+
+#endif // PRIORITY_QUEUE_H
+
+
+================================================================================
+File: src\traffic\road_system.cpp
+================================================================================
+
+// src/traffic/road_system.cpp
+#include "road_system.h"
+#include <cmath>
+#include "../utils/math_utils.h"
+
+RoadSystem::RoadSystem(SDL_Renderer* renderer)
+    : m_renderer(renderer) {
+    initializeLanes();
+    initializeTrafficLights();
+}
+
+void RoadSystem::initializeLanes() {
+    // Constants for positioning
+    const float CENTER_X = 640.0f;  // Screen center X
+    const float CENTER_Y = 360.0f;  // Screen center Y
+    const float LANE_WIDTH = ROAD_WIDTH / 3.0f;
+
+    // Initialize all lanes with their positions
+    for (int i = 0; i < 12; ++i) {
+        LaneId id = static_cast<LaneId>(i);
+        Vector2D start = calculateLaneStart(id);
+        Vector2D end = calculateLaneEnd(id);
+        bool isPriority = (id == LaneId::AL2_PRIORITY ||
+                         id == LaneId::BL2_PRIORITY ||
+                         id == LaneId::CL2_PRIORITY ||
+                         id == LaneId::DL2_PRIORITY);
+
+        m_lanes[id] = std::make_unique<Lane>(m_renderer, id, isPriority);
+    }
+}
+
+// src/traffic/road_system.cpp
+void RoadSystem::initializeTrafficLights() {
+    const float CENTER_X = 640.0f;
+    const float CENTER_Y = 360.0f;
+    const float OFFSET = 90.0f;
+
+    // Create traffic lights at intersection corners
+    m_trafficLights.push_back(std::make_unique<TrafficLight>(
+        m_renderer, CENTER_X - OFFSET, CENTER_Y - OFFSET));
+    m_trafficLights.push_back(std::make_unique<TrafficLight>(
+        m_renderer, CENTER_X + OFFSET, CENTER_Y - OFFSET));
+    m_trafficLights.push_back(std::make_unique<TrafficLight>(
+        m_renderer, CENTER_X + OFFSET, CENTER_Y + OFFSET));
+    m_trafficLights.push_back(std::make_unique<TrafficLight>(
+        m_renderer, CENTER_X - OFFSET, CENTER_Y + OFFSET));
+}
+
+Vector2D RoadSystem::calculateLaneStart(LaneId id) const {
+    const float CENTER_X = 640.0f;
+    const float CENTER_Y = 360.0f;
+    const float LANE_WIDTH = ROAD_WIDTH / 3.0f;
+    const float HALF_ROAD = ROAD_WIDTH / 2.0f;
+
+    // Calculate start position based on lane ID
+    switch (id) {
+        case LaneId::AL1_INCOMING:
+            return Vector2D(CENTER_X - HALF_ROAD + LANE_WIDTH/2, 0);
+        case LaneId::AL2_PRIORITY:
+            return Vector2D(CENTER_X - HALF_ROAD + LANE_WIDTH*1.5f, 0);
+        case LaneId::AL3_FREELANE:
+            return Vector2D(CENTER_X - HALF_ROAD + LANE_WIDTH*2.5f, 0);
+        // Add other cases for remaining lanes...
+        default:
+            return Vector2D(0, 0);
+    }
+}
+
+Vector2D RoadSystem::calculateLaneEnd(LaneId id) const {
+    const float CENTER_X = 640.0f;
+    const float CENTER_Y = 360.0f;
+    const float LANE_WIDTH = ROAD_WIDTH / 3.0f;
+    const float HALF_ROAD = ROAD_WIDTH / 2.0f;
+
+    // Calculate end position based on lane ID
+    switch (id) {
+        case LaneId::AL1_INCOMING:
+            return Vector2D(CENTER_X - HALF_ROAD + LANE_WIDTH/2, CENTER_Y - HALF_ROAD);
+        case LaneId::AL2_PRIORITY:
+            return Vector2D(CENTER_X - HALF_ROAD + LANE_WIDTH*1.5f, CENTER_Y - HALF_ROAD);
+        case LaneId::AL3_FREELANE:
+            return Vector2D(CENTER_X - HALF_ROAD + LANE_WIDTH*2.5f, CENTER_Y - HALF_ROAD);
+        // Add other cases for remaining lanes...
+        default:
+            return Vector2D(0, 0);
+    }
+}
+
+void RoadSystem::update(float deltaTime) {
+    // Update all lanes
+    for (auto& [id, lane] : m_lanes) {
+        lane->update(deltaTime);
+    }
+
+    // Update traffic lights
+    for (auto& light : m_trafficLights) {
+        light->update(deltaTime);
+    }
+}
+
+void RoadSystem::render() const {
+    // Render road background
+    // Draw basic road structure
+    SDL_SetRenderDrawColor(m_renderer, 50, 50, 50, 255);
+
+    // Draw horizontal and vertical roads
+    SDL_FRect horizontalRoad = {
+        0, 360.0f - ROAD_WIDTH/2,
+        1280.0f, ROAD_WIDTH
+    };
+    SDL_FRect verticalRoad = {
+        640.0f - ROAD_WIDTH/2, 0,
+        ROAD_WIDTH, 720.0f
+    };
+
+    SDL_RenderFillRect(m_renderer, &horizontalRoad);
+    SDL_RenderFillRect(m_renderer, &verticalRoad);
+
+    // Render all lanes
+    for (const auto& [id, lane] : m_lanes) {
+        lane->render();
+    }
+
+    // Render traffic lights
+    for (const auto& light : m_trafficLights) {
+        light->render();
+    }
+}
+
+
+================================================================================
+File: src\traffic\road_system.h
+================================================================================
+
+// src/traffic/road_system.h
+#ifndef ROAD_SYSTEM_H
+#define ROAD_SYSTEM_H
+
+#include "lane.h"
+#include "traffic_light.h"
+#include <map>
+#include <memory>
+#include "../utils/math_utils.h"
+
+// The RoadSystem class manages the physical layout of roads and their interactions
+class RoadSystem {
+public:
+    RoadSystem(SDL_Renderer* renderer);
+
+    void update(float deltaTime);
+    void render() const;
+
+    // Lane management
+    Lane* getLane(LaneId id);
+    void addVehicle(Vehicle* vehicle, LaneId lane);
+
+    // Road dimensions
+    static constexpr float ROAD_WIDTH = 180.0f;   // Total width for 3 lanes
+    static constexpr float LANE_WIDTH = 60.0f;    // Width of each lane
+
+private:
+    SDL_Renderer* m_renderer;
+    std::map<LaneId, std::unique_ptr<Lane>> m_lanes;
+    std::vector<std::unique_ptr<TrafficLight>> m_trafficLights;
+
+    // Helper methods for road layout
+    void initializeLanes();
+    void initializeTrafficLights();
+
+    // Calculate positions for lanes
+    Vector2D calculateLaneStart(LaneId id) const;
+    Vector2D calculateLaneEnd(LaneId id) const;
+};
+
+#endif // ROAD_SYSTEM_H
+
+
+================================================================================
+File: src\traffic\traffic_communicator.cpp
+================================================================================
+
+
+
+================================================================================
+File: src\traffic\traffic_communicator.h
+================================================================================
+
+// src/communication/traffic_communicator.h
+#ifndef TRAFFIC_COMMUNICATOR_H
+#define TRAFFIC_COMMUNICATOR_H
+
+#include <string>
+#include <filesystem>
+#include <fstream>
+#include "../traffic/vehicle.h"
+
+class TrafficCommunicator {
+public:
+    TrafficCommunicator(const std::string& dataPath)
+        : m_dataPath(dataPath) {
+        initializeDirectory();
+    }
+
+    // Write vehicle data to appropriate lane file
+    void writeVehicleState(const Vehicle& vehicle) {
+        std::string filename = getLaneFileName(vehicle.getLane());
+        std::ofstream file(m_dataPath / filename, std::ios::app);
+
+        if (file.is_open()) {
+            // Write vehicle data in simple format: id,x,y,priority
+            file << vehicle.getId() << ","
+                 << vehicle.getX() << ","
+                 << vehicle.getY() << ","
+                 << (vehicle.isPriority() ? "1" : "0")
+                 << std::endl;
+        }
+    }
+
+    // Read vehicle data from lane files
+    std::vector<VehicleData> readVehicleStates() {
+        std::vector<VehicleData> vehicles;
+
+        // Read from each lane file
+        for (const auto& file : std::filesystem::directory_iterator(m_dataPath)) {
+            if (file.path().extension() == ".txt") {
+                std::ifstream inFile(file.path());
+                std::string line;
+
+                while (std::getline(inFile, line)) {
+                    vehicles.push_back(parseVehicleData(line));
+                }
+
+                // Clear file after reading
+                std::ofstream clearFile(file.path(), std::ios::trunc);
+            }
+        }
+
+        return vehicles;
+    }
+
+private:
+    std::filesystem::path m_dataPath;
+
+    void initializeDirectory() {
+        if (!std::filesystem::exists(m_dataPath)) {
+            std::filesystem::create_directories(m_dataPath);
+        }
+    }
+
+    std::string getLaneFileName(LaneId lane) const {
+        switch (lane) {
+            case LaneId::AL1_INCOMING: return "lane_a1.txt";
+            case LaneId::AL2_PRIORITY: return "lane_a2.txt";
+            case LaneId::AL3_FREELANE: return "lane_a3.txt";
+            // Add other cases...
+            default: return "unknown_lane.txt";
+        }
+    }
+
+    VehicleData parseVehicleData(const std::string& line) {
+        std::stringstream ss(line);
+        std::string item;
+        std::vector<std::string> data;
+
+        while (std::getline(ss, item, ',')) {
+            data.push_back(item);
+        }
+
+        VehicleData vehicle;
+        if (data.size() >= 4) {
+            vehicle.id = std::stoi(data[0]);
+            vehicle.x = std::stof(data[1]);
+            vehicle.y = std::stof(data[2]);
+            vehicle.isPriority = (data[3] == "1");
+        }
+        return vehicle;
+    }
+};
+
+#endif // TRAFFIC_COMMUNICATOR_H
+
+
+================================================================================
+File: src\traffic\traffic_light.cpp
+================================================================================
+
+// traffic_light.cpp
+#include "traffic_light.h"
+
+TrafficLight::TrafficLight(SDL_Renderer* renderer, float x, float y)
+    : m_renderer(renderer)
+    , m_state(LightState::RED)
+    , m_timer(0.0f)
+    , m_x(x)
+    , m_y(y)
+    , m_syncedLight(nullptr)
+{}
+
+void TrafficLight::update(float deltaTime) {
+    m_timer += deltaTime;
+
+    // Change state after duration
+    if (m_timer >= STATE_DURATION) {
+        // Toggle state
+        setState(m_state == LightState::RED ? LightState::GREEN : LightState::RED);
+        m_timer = 0.0f;
+    }
+}
+
+void TrafficLight::setState(LightState state) {
+    m_state = state;
+
+    // Update synced light to opposite state
+    if (m_syncedLight) {
+        m_syncedLight->m_state = (state == LightState::RED ?
+            LightState::GREEN : LightState::RED);
+        m_syncedLight->m_timer = 0.0f;
+    }
+}
+
+void TrafficLight::render() const {
+    // Draw traffic light housing
+    SDL_FRect housing = {
+        m_x - 15, m_y - 40,
+        30, 80
+    };
+
+    SDL_SetRenderDrawColor(m_renderer, 50, 50, 50, 255);
+    SDL_RenderFillRect(m_renderer, &housing);
+
+    // Draw lights
+    const float LIGHT_RADIUS = 10.0f;
+
+    // Red light
+    SDL_SetRenderDrawColor(m_renderer,
+        m_state == LightState::RED ? 255 : 50,  // Bright/dim red
+        0, 0, 255);
+    SDL_FRect redLight = {
+        m_x - LIGHT_RADIUS, m_y - 25,
+        LIGHT_RADIUS * 2, LIGHT_RADIUS * 2
+    };
+    SDL_RenderFillRect(m_renderer, &redLight);
+
+    // Green light
+    SDL_SetRenderDrawColor(m_renderer,
+        0,
+        m_state == LightState::GREEN ? 255 : 50,  // Bright/dim green
+        0, 255);
+    SDL_FRect greenLight = {
+        m_x - LIGHT_RADIUS, m_y + 5,
+        LIGHT_RADIUS * 2, LIGHT_RADIUS * 2
+    };
+    SDL_RenderFillRect(m_renderer, &greenLight);
+}
+
+void TrafficLight::synchronizeWith(TrafficLight* other) {
+    m_syncedLight = other;
+    if (m_syncedLight) {
+        m_syncedLight->m_state = (m_state == LightState::RED ?
+            LightState::GREEN : LightState::RED);
+    }
+}
+
+
+================================================================================
+File: src\traffic\traffic_light.h
+================================================================================
+
+// traffic_light.h
+#ifndef TRAFFIC_LIGHT_H
+#define TRAFFIC_LIGHT_H
+
+#include <SDL3/SDL.h>
+
+enum class LightState {
+    RED,
+    GREEN
+};
+
+class TrafficLight {
+public:
+    TrafficLight(SDL_Renderer* renderer, float x, float y);
+
+    void update(float deltaTime);
+    void render() const;
+    void setState(LightState state);
+
+    bool isGreen() const { return m_state == LightState::GREEN; }
+
+    // Synchronization
+    void synchronizeWith(TrafficLight* other);
+
+private:
+    SDL_Renderer* m_renderer;
+    LightState m_state;
+    float m_timer;
+    float m_x, m_y;
+    TrafficLight* m_syncedLight;
+
+    // Timing constants
+    static constexpr float STATE_DURATION = 10.0f;  // 10 seconds per state
+};
+
+#endif // TRAFFIC_LIGHT_H
+
+
+================================================================================
+File: src\traffic\traffic_manager.cpp
+================================================================================
+
+// src/traffic/traffic_manager.cpp
+#include "traffic_manager.h"
+#include <algorithm> // For std::find_if and other algorithms
+#include <cmath>     // For mathematical operations like ceil()
+
+// Constructor initializes our traffic management system
+TrafficManager::TrafficManager(SDL_Renderer *renderer)
+    : m_renderer(renderer),
+      m_queueProcessor(std::make_unique<QueueProcessor>()),
+      m_priorityMode(false) { // Start in normal mode
+
+  // Initialize lanes for each road
+  for (int i = 0; i < 12; ++i) {
+    LaneId laneId = static_cast<LaneId>(i);
+    m_lanes[laneId] = std::make_unique<Lane>(m_renderer, laneId);
+  }
+}
+
+
+
+int TrafficManager::calculateVehiclesToProcess() const {
+  // Implement the formula |V| = 1/n Σ|Li|
+  int normalLaneCount = 0;
+  int totalQueueLength = 0;
+
+  // Count only normal (non-priority) lanes
+  for (const auto &[id, lane] : m_lanes) {
+    if (!lane->isPriorityLane()) {
+      normalLaneCount++;
+      totalQueueLength += lane->getQueueLength();
+    }
+  }
+
+  // Calculate average and round up as per assignment requirements
+  if (normalLaneCount == 0)
+    return 0;
+  return static_cast<int>(
+      std::ceil(static_cast<float>(totalQueueLength) / normalLaneCount));
+}
+
+// Update function processes all traffic management logic
+void TrafficManager::update(float deltaTime) {
+  // Check if any priority conditions need handling
+  checkPriorityConditions();
+
+  // Process all lanes according to traffic rules
+  processLanes(deltaTime);
+
+  // Read any new vehicles from the communication system
+  auto newVehicles = readNewVehicles();
+  for (auto *vehicle : newVehicles) {
+    addVehicle(vehicle);
+  }
+}
+
+// Render displays the current state of all traffic elements
+void TrafficManager::render() const {
+  // Render all lanes and their vehicles
+  for (const auto &[id, lane] : m_lanes) {
+    lane->render();
+  }
+}
+
+// Add a new vehicle to the appropriate lane
+void TrafficManager::addVehicle(Vehicle *vehicle) {
+  if (!vehicle)
+    return;
+
+  auto laneId = vehicle->getCurrentLaneId();
+  if (auto it = m_lanes.find(laneId); it != m_lanes.end()) {
+    it->second->addVehicle(vehicle);
+  }
+}
+
+// Process all lanes according to traffic rules
+void TrafficManager::processLanes(float deltaTime) {
+  // In priority mode, handle priority lanes first
+  if (m_priorityMode) {
+    processPriorityLanes(deltaTime);
+  }
+
+  // Process normal lanes using the |V| = 1/n Σ|Li| formula
+  int vehiclesToProcess = calculateVehiclesToProcess();
+
+  for (auto &[id, lane] : m_lanes) {
+    if (!lane->isPriorityLane()) {
+      lane->update(deltaTime);
+    }
+  }
+}
+
+
+
+// Check and update priority conditions
+void TrafficManager::checkPriorityConditions() {
+  // Check if any priority lane has more than 10 vehicles
+  for (const auto &[id, lane] : m_lanes) {
+    if (lane->isPriorityLane() && lane->getQueueLength() >= 10) {
+      m_priorityMode = true;
+      return;
+    }
+  }
+
+  // Check if we can exit priority mode (all priority lanes < 5 vehicles)
+  bool canExitPriority = true;
+  for (const auto &[id, lane] : m_lanes) {
+    if (lane->isPriorityLane() && lane->getQueueLength() >= 5) {
+      canExitPriority = false;
+      break;
+    }
+  }
+
+  if (canExitPriority) {
+    m_priorityMode = false;
+  }
+}
+
+// Process priority lanes when in priority mode
+void TrafficManager::processPriorityLanes(float deltaTime) {
+  for (auto &[id, lane] : m_lanes) {
+    if (lane->isPriorityLane()) {
+      lane->update(deltaTime);
+    }
+  }
+}
+
+// Helper function to read new vehicles from communication system
+std::vector<Vehicle *> TrafficManager::readNewVehicles() {
+  // Implementation depends on your communication system
+  return std::vector<Vehicle *>();
+}
+
+
+================================================================================
+File: src\traffic\traffic_manager.h
+================================================================================
+
+// src/traffic/traffic_manager.h
+#ifndef TRAFFIC_MANAGER_H
+#define TRAFFIC_MANAGER_H
+
+#include "lane.h"
+#include "queue_processor.h"
+#include "vehicle.h"
+#include <map>
+#include <memory>
+#include <vector>
+
+class TrafficManager {
+public:
+  TrafficManager(SDL_Renderer *renderer);
+  void update(float deltaTime);
+  void render() const;
+  void addVehicle(Vehicle *vehicle);
+  void processLanes(float deltaTime);
+  void checkPriorityConditions();
+
+private:
+  SDL_Renderer *m_renderer;
+  std::map<LaneId, std::unique_ptr<Lane>> m_lanes;
+  std::unique_ptr<QueueProcessor> m_queueProcessor;
+  bool m_priorityMode;
+
+  // Add these missing method declarations
+  void processPriorityLanes(float deltaTime);
+  std::vector<Vehicle *> readNewVehicles();
+
+
+  int calculateVehiclesToProcess() const;
+
+};
+
+#endif // TRAFFIC_MANAGER_H
+
+
+================================================================================
+File: src\traffic\vehicle.cpp
+================================================================================
+
+// src/traffic/vehicle.cpp
+#include "vehicle.h"
+
+Vehicle::Vehicle(SDL_Renderer* renderer, int id, LaneId currentLane)
+    : m_renderer(renderer)
+    , m_id(id)
+    , m_currentLane(currentLane)
+    , m_targetLane(currentLane)
+    , m_position(0.0f, 0.0f)
+    , m_isPriority(false) {
+}
+
+void Vehicle::render() const {
+    SDL_FRect rect = {
+        m_position.x - VEHICLE_WIDTH/2,
+        m_position.y - VEHICLE_LENGTH/2,
+        VEHICLE_WIDTH,
+        VEHICLE_LENGTH
+    };
+
+    SDL_SetRenderDrawColor(m_renderer,
+        m_isPriority ? 255 : 0,  // Red for priority
+        m_isPriority ? 0 : 255,  // Green for normal
+        0, 255);
+
+    SDL_RenderFillRect(m_renderer, &rect);
+}
+
+
+================================================================================
+File: src\traffic\vehicle.h
+================================================================================
+
+// src/traffic/vehicle.h
+#ifndef VEHICLE_H
+#define VEHICLE_H
+
+#include <SDL3/SDL.h>
+#include "../utils/math_utils.h"
+#include "../common/types.h"
+
+class Vehicle {
+public:
+    Vehicle(SDL_Renderer* renderer, int id, LaneId currentLane);  // Declaration only
+
+    // Getters
+    int getId() const { return m_id; }
+    LaneId getCurrentLaneId() const { return m_currentLane; }
+    Vector2D getPosition() const { return m_position; }
+    bool isPriority() const { return m_isPriority; }
+
+    // Setters
+    void setPosition(float x, float y) { m_position.x = x; m_position.y = y; }
+    void setTargetLane(LaneId lane) { m_targetLane = lane; }
+    void setPriority(bool priority) { m_isPriority = priority; }
+
+    void render() const;  // Declaration only
+
+    float getX() const { return m_position.x; }
+    float getY() const { return m_position.y; }
+    LaneId getLane() const { return m_currentLane; }
+
+    // Constants
+    static constexpr float VEHICLE_WIDTH = 20.0f;
+    static constexpr float VEHICLE_LENGTH = 40.0f;
+
+private:
+    SDL_Renderer* m_renderer;
+    int m_id;
+    LaneId m_currentLane;
+    LaneId m_targetLane;
+    Vector2D m_position;
+    bool m_isPriority;
+};
+
+#endif // VEHICLE_H
+
+
+================================================================================
+File: src\types.h
+================================================================================
+
+
+
+================================================================================
+File: src\utils\math_utils.h
+================================================================================
+
+// src/utils/math_utils.h
+#ifndef MATH_UTILS_H
+#define MATH_UTILS_H
+
+#include <cmath>
+
+struct Vector2D {
+  float x, y;
+
+  Vector2D(float x_ = 0.0f, float y_ = 0.0f) : x(x_), y(y_) {}
+
+  // Add vector operations
+  Vector2D operator+(const Vector2D &other) const {
+    return Vector2D(x + other.x, y + other.y);
+  }
+
+  Vector2D operator-(const Vector2D &other) const {
+    return Vector2D(x - other.x, y - other.y);
+  }
+};
+
+#endif // MATH_UTILS_H
+
+
+================================================================================
+File: src\visualization\debug_overlay.cpp
+================================================================================
+
+// src/visualization/debug_overlay.cpp
+#include "debug_overlay.h"
+#include <sstream>
+#include <iomanip>
+#include "../traffic/vehicle.h"
+#include "../utils/math_utils.h"
+
+DebugOverlay::DebugOverlay(SDL_Renderer* renderer, TTF_Font* font)
+    : m_renderer(renderer)
+    , m_text(std::make_unique<Text>(renderer, font))
+    , m_isVisible(false) {}
+
+void DebugOverlay::render(const TrafficManager& manager) {
+    if (!m_isVisible) return;
+
+    renderGrid();
+    renderDebugInfo(manager);
+    renderLaneInfo(manager);
+    renderIntersectionDebug();
+}
+
+void DebugOverlay::renderGrid() const {
+    // Draw coordinate grid for debugging
+    SDL_SetRenderDrawColor(m_renderer, 30, 30, 30, 128);
+
+    // Vertical lines every 100 pixels
+    for (int x = 0; x < 1280; x += 100) {
+        // In SDL3, we use SDL_RenderLine instead of SDL_RenderDrawLine
+        SDL_RenderLine(m_renderer, 
+            static_cast<float>(x), 0.0f,
+            static_cast<float>(x), 720.0f);
+        
+        // Draw coordinate text
+        std::stringstream ss;
+        ss << x;
+        m_text->setText(ss.str(), {128, 128, 128, 255});
+        m_text->render(x + 5, 5);
+    }
+
+    // Horizontal lines every 100 pixels
+    for (int y = 0; y < 720; y += 100) {
+        // Using SDL3's floating-point coordinates
+        SDL_RenderLine(m_renderer,
+            0.0f, static_cast<float>(y),
+            1280.0f, static_cast<float>(y));
+        
+        std::stringstream ss;
+        ss << y;
+        m_text->setText(ss.str(), {128, 128, 128, 255});
+        m_text->render(5, y + 5);
+    }
+}
+
+void DebugOverlay::renderDebugInfo(const TrafficManager& manager) const {
+    float y = 10.0f;
+    const float LINE_HEIGHT = 20.0f;
+    const float RIGHT_MARGIN = 200.0f;
+
+    // Render FPS and timing info
+    std::stringstream ss;
+    ss << "Frame Time: " << std::fixed << std::setprecision(2)
+       << SDL_GetTicks() / 1000.0f << "s";
+    m_text->setText(ss.str(), {255, 255, 255, 255});
+    m_text->render(1280 - RIGHT_MARGIN, y);
+    y += LINE_HEIGHT;
+
+    // Priority mode status
+    ss.str("");
+    ss << "Priority Mode: " << (manager.isInPriorityMode() ? "ACTIVE" : "INACTIVE");
+    SDL_Color priorityColor = manager.isInPriorityMode() ? 
+        SDL_Color{255, 255, 0, 255} : SDL_Color{255, 255, 255, 255};
+    m_text->setText(ss.str(), priorityColor);
+    m_text->render(1280 - RIGHT_MARGIN, y);
+}
+
+void DebugOverlay::renderLaneInfo(const TrafficManager& manager) const {
+    const float LINE_HEIGHT = 20.0f;
+    float y = 100.0f;
+
+    // Show detailed info for each lane
+    for (int i = 0; i < 12; ++i) {
+        LaneId lane = static_cast<LaneId>(i);
+        int queueLength = manager.getQueueLength(lane);
+        
+        std::stringstream ss;
+        ss << "Lane " << getLaneString(lane) << ": "
+           << queueLength << " vehicles";
+
+        // Color code based on queue length
+        SDL_Color color = {255, 255, 255, 255};
+        if (queueLength >= 10) {
+            color = {255, 0, 0, 255};  // Red for critical
+        } else if (queueLength >= 5) {
+            color = {255, 255, 0, 255};  // Yellow for warning
+        }
+
+        m_text->setText(ss.str(), color);
+        m_text->render(1280 - 200.0f, y);
+        y += LINE_HEIGHT;
+    }
+}
+
+void DebugOverlay::renderIntersectionDebug() const {
+    // Draw intersection boundaries
+    const float CENTER_X = 640.0f;
+    const float CENTER_Y = 360.0f;
+    const float INTERSECTION_SIZE = 180.0f;
+
+    // Create intersection rectangle using SDL3's FRect
+    SDL_FRect intersection = {
+        CENTER_X - INTERSECTION_SIZE/2,
+        CENTER_Y - INTERSECTION_SIZE/2,
+        INTERSECTION_SIZE,
+        INTERSECTION_SIZE
+    };
+
+    SDL_SetRenderDrawColor(m_renderer, 255, 0, 0, 64);
+    // In SDL3, we use SDL_RenderRect instead of SDL_RenderDrawRect
+    SDL_RenderRect(m_renderer, &intersection);
+
+    // Draw intersection center marker
+    const float MARKER_SIZE = 10.0f;
+    SDL_RenderLine(m_renderer,
+        CENTER_X - MARKER_SIZE, CENTER_Y,
+        CENTER_X + MARKER_SIZE, CENTER_Y);
+    SDL_RenderLine(m_renderer,
+        CENTER_X, CENTER_Y - MARKER_SIZE,
+        CENTER_X, CENTER_Y + MARKER_SIZE);
+}
+
+void DebugOverlay::renderVehicleDebug(const Vehicle* vehicle) const {
+    if (!vehicle) return;
+
+    // Draw vehicle bounding box
+    SDL_FRect bounds = {
+        vehicle->getPosition().x - Vehicle::VEHICLE_WIDTH/2,
+        vehicle->getPosition().y - Vehicle::VEHICLE_LENGTH/2,
+        Vehicle::VEHICLE_WIDTH,
+        Vehicle::VEHICLE_LENGTH
+    };
+    SDL_SetRenderDrawColor(m_renderer, 255, 0, 0, 255);
+    SDL_RenderRect(m_renderer, &bounds);
+
+    // Show vehicle details
+    std::stringstream ss;
+    ss << "Lane: " << getLaneString(vehicle->getCurrentLaneId()) << "\n"
+       << "Wait: " << std::fixed << std::setprecision(1)
+       << vehicle->getWaitTime() << "s";
+
+    m_text->setText(ss.str(), {255, 255, 255, 255});
+    m_text->render(
+        static_cast<int>(vehicle->getPosition().x) + 25,
+        static_cast<int>(vehicle->getPosition().y) - 25
+    );
+}
+
+================================================================================
+File: src\visualization\debug_overlay.h
+================================================================================
+
+// src/visualization/debug_overlay.h
+#ifndef DEBUG_OVERLAY_H
+#define DEBUG_OVERLAY_H
+
+#include <SDL3/SDL.h>
+#include <SDL3_ttf/SDL_ttf.h>
+#include <memory>
+#include "../traffic/traffic_manager.h"
+#include "../core/text.h"
+
+// Forward declarations
+class Vehicle;
+std::string getLaneString(LaneId lane);
+
+class DebugOverlay {
+public:
+    /**
+     * Constructor for the debug overlay.
+     * @param renderer The SDL renderer to use for drawing
+     * @param font The TTF font to use for text rendering
+     */
+    DebugOverlay(SDL_Renderer* renderer, TTF_Font* font);
+
+    /**
+     * Renders the debug overlay if visible.
+     * @param manager Reference to the traffic manager for queue information
+     */
+    void render(const TrafficManager& manager);
+
+    /**
+     * Toggles the visibility of the debug overlay.
+     */
+    void toggleDisplay() { m_isVisible = !m_isVisible; }
+
+    /**
+     * Checks if the debug overlay is currently visible.
+     * @return true if visible, false otherwise
+     */
+    bool isVisible() const { return m_isVisible; }
+
+private:
+    SDL_Renderer* m_renderer;        // Renderer reference for drawing
+    std::unique_ptr<Text> m_text;    // Text rendering utility
+    bool m_isVisible;                // Visibility toggle
+
+    // Helper rendering methods
+    void renderGrid() const;
+    void renderDebugInfo(const TrafficManager& manager) const;
+    void renderLaneInfo(const TrafficManager& manager) const;
+    void renderIntersectionDebug() const;
+    void renderVehicleDebug(const Vehicle* vehicle) const;
+};
+
+#endif // DEBUG_OVERLAY_H
+
+================================================================================
+File: src\visualization\statistics_display.cpp
+================================================================================
+
+// src/visualization/statistics_display.cpp
+#include "statistics_display.h"
+
+StatisticsDisplay::StatisticsDisplay(SDL_Renderer* renderer)
+    : m_renderer(renderer)
+    , m_updateTimer(0.0f) {
+    // Initialize our statistics tracking map for each lane
+    for (int i = 0; i < 12; ++i) {
+        LaneId lane = static_cast<LaneId>(i);
+        m_laneStats[lane] = QueueStats{0, 0.0f, false, 0.0f};
+    }
+}
+
+void StatisticsDisplay::render(const TrafficManager& trafficManager) {
+    // Create the statistics panel on the right side of the screen
+    SDL_FRect panel = {980.0f, 0.0f, 300.0f, 720.0f};
+    SDL_SetRenderDrawColor(m_renderer, 40, 40, 40, 200);
+    SDL_RenderFillRect(m_renderer, &panel);
+
+    // Render each section of statistics
+    renderQueueLengths(1000.0f, 20.0f);
+    renderWaitTimes(1000.0f, 250.0f);
+    renderPriorityStatus(1000.0f, 480.0f);
+    renderVehicleProcessingFormula();
+}
+
+void StatisticsDisplay::renderQueueLengths(float startX, float startY) {
+    SDL_Color titleColor = {255, 255, 255, 255};
+    renderText("Queue Lengths", startX, startY, titleColor);
+
+    float y = startY + 30.0f;
+    const float LINE_HEIGHT = 20.0f;
+
+    for (const auto& [lane, stats] : m_laneStats) {
+        std::stringstream ss;
+        ss << "Lane " << getLaneString(lane) << ": " << stats.queueLength;
+
+        // Color code based on queue length
+        SDL_Color color = {255, 255, 255, 255};  // Default white
+        if (stats.queueLength >= 10) {
+            color = {255, 0, 0, 255};  // Red for critical
+        } else if (stats.queueLength >= 5) {
+            color = {255, 255, 0, 255};  // Yellow for warning
+        }
+
+        renderText(ss.str(), startX, y, color);
+        y += LINE_HEIGHT;
+    }
+}
+
+void StatisticsDisplay::renderWaitTimes(float startX, float startY) {
+    SDL_Color titleColor = {255, 255, 255, 255};
+    renderText("Wait Times", startX, startY, titleColor);
+
+    float y = startY + 30.0f;
+    const float LINE_HEIGHT = 20.0f;
+
+    for (const auto& [lane, stats] : m_laneStats) {
+        std::stringstream ss;
+        ss << "Lane " << getLaneString(lane) << ": "
+           << std::fixed << std::setprecision(1) << stats.waitTime << "s";
+
+        // Color code based on wait time
+        SDL_Color color = {255, 255, 255, 255};
+        if (stats.waitTime > 30.0f) {
+            color = {255, 0, 0, 255};  // Red for long waits
+        } else if (stats.waitTime > 15.0f) {
+            color = {255, 255, 0, 255};  // Yellow for medium waits
+        }
+
+        renderText(ss.str(), startX, y, color);
+        y += LINE_HEIGHT;
+    }
+}
+
+void StatisticsDisplay::renderPriorityStatus(float startX, float startY) {
+    SDL_Color titleColor = {255, 255, 255, 255};
+    renderText("Priority Status", startX, startY, titleColor);
+
+    float y = startY + 30.0f;
+    const float LINE_HEIGHT = 20.0f;
+
+    // Render priority mode indicator
+    bool anyPriorityActive = std::any_of(
+        m_laneStats.begin(),
+        m_laneStats.end(),
+        [](const auto& pair) { return pair.second.isPriorityActive; }
+    );
+
+    SDL_Color statusColor = anyPriorityActive ?
+        SDL_Color{255, 0, 0, 255} : SDL_Color{0, 255, 0, 255};
+
+    std::string statusText = "Priority Mode: " +
+        std::string(anyPriorityActive ? "ACTIVE" : "INACTIVE");
+    renderText(statusText, startX, y, statusColor);
+}
+
+void StatisticsDisplay::renderVehicleProcessingFormula() {
+    // Display the vehicle processing formula and current values
+    std::stringstream ss;
+    ss << "Vehicle Processing Formula:\n"
+       << "|V| = 1/n Σ|Li|\n"
+       << "where:\n"
+       << "n = number of normal lanes\n"
+       << "|Li| = length of lane i";
+
+    SDL_Color formulaColor = {200, 200, 255, 255};
+    renderText(ss.str(), 1000.0f, 600.0f, formulaColor);
+}
+
+void StatisticsDisplay::update(float deltaTime) {
+    m_updateTimer += deltaTime;
+
+    // Update statistics periodically to avoid performance impact
+    if (m_updateTimer >= UPDATE_INTERVAL) {
+        // Update will be handled by TrafficManager
+        m_updateTimer = 0.0f;
+    }
+}
+
+
+================================================================================
+File: src\visualization\statistics_display.h
+================================================================================
+
+// src/visualization/statistics_display.h
+#ifndef STATISTICS_DISPLAY_H
+#define STATISTICS_DISPLAY_H
+
+#include <SDL3/SDL.h>
+#include "../traffic/traffic_manager.h"
+#include "../core/queue.h"
+#include <string>
+#include <sstream>
+
+// This class handles the visual representation of our queue statistics
+// and traffic flow information, helping users monitor the simulation
+class StatisticsDisplay {
+public:
+    StatisticsDisplay(SDL_Renderer* renderer);
+
+    // Core display functions
+    void render(const TrafficManager& trafficManager);
+    void update(float deltaTime);
+
+private:
+    SDL_Renderer* m_renderer;
+    float m_updateTimer;
+    static constexpr float UPDATE_INTERVAL = 0.5f;  // Update every half second
+
+    // Statistics tracking
+    struct QueueStats {
+        int queueLength;
+        float waitTime;
+        bool isPriorityActive;
+        float processingProgress;
+    };
+    std::map<LaneId, QueueStats> m_laneStats;
+
+    // Helper rendering functions
+    void renderQueueLengths(float startX, float startY);
+    void renderWaitTimes(float startX, float startY);
+    void renderPriorityStatus(float startX, float startY);
+    void renderVehicleProcessingFormula();
+
+    // Text rendering helpers
+    void renderText(const std::string& text, float x, float y, SDL_Color color);
+    SDL_Texture* createTextTexture(const std::string& text, SDL_Color color);
+};
+
+#endif // STATISTICS_DISPLAY_H
+
+
+================================================================================
+File: src\visualization\visualization_manager.cpp
+================================================================================
+
+// src/visualization/visualization_manager.cpp
+#include "visualization_manager.h"
+#include <sstream>
+#include <iomanip>
+
+VisualizationManager::VisualizationManager(SDL_Renderer* renderer)
+    : m_renderer(renderer) {
+
+    // Initialize TTF
+    if (TTF_Init() < 0) {
+        throw std::runtime_error("TTF initialization failed");
+    }
+
+    // Load font
+    m_font = TTF_OpenFont("assets/fonts/Arial.ttf", 16);
+    if (!m_font) {
+        throw std::runtime_error("Font loading failed");
+    }
+
+    m_text = std::make_unique<Text>(renderer, m_font);
+}
+
+VisualizationManager::~VisualizationManager() {
+    TTF_CloseFont(m_font);
+    TTF_Quit();
+}
+
+void VisualizationManager::render(const TrafficManager& trafficManager) {
+    renderBackground();
+    renderQueueLengths(trafficManager);
+    renderWaitTimes(trafficManager);
+    renderStatistics();
+    renderLegend();
+}
+
+void VisualizationManager::renderBackground() const {
+    // Draw background panel for statistics
+    SDL_FRect statsPanel = {0, 0, 200, 720};
+    SDL_SetRenderDrawColor(m_renderer, 40, 40, 40, 255);
+    SDL_RenderFillRect(m_renderer, &statsPanel);
+}
+
+void VisualizationManager::renderQueueLengths(const TrafficManager& manager) const {
+    float y = 10.0f;
+    const float LINE_HEIGHT = 20.0f;
+    const float MARGIN = 10.0f;
+
+    // Render queue lengths for each lane
+    auto queueLengths = manager.getQueueLengths();
+    for (const auto& [lane, length] : queueLengths) {
+        std::stringstream ss;
+        ss << "Lane " << getLaneString(lane) << ": " << length;
+
+        // Color coding based on queue length
+        SDL_Color color = {255, 255, 255, 255};  // Default white
+        if (length > 10) {
+            color = {255, 0, 0, 255};  // Red for critical
+        } else if (length > 5) {
+            color = {255, 255, 0, 255};  // Yellow for warning
+        }
+
+        m_text->setText(ss.str(), color);
+        m_text->render(MARGIN, y);
+        y += LINE_HEIGHT;
+    }
+}
+
+void VisualizationManager::renderWaitTimes(const TrafficManager& manager) const {
+    float y = 250.0f;
+    const float LINE_HEIGHT = 20.0f;
+    const float MARGIN = 10.0f;
+
+    // Render wait times for each lane
+    auto waitTimes = manager.getWaitTimes();
+    for (const auto& [lane, time] : waitTimes) {
+        std::stringstream ss;
+        ss << "Wait " << getLaneString(lane) << ": "
+           << std::fixed << std::setprecision(1) << time << "s";
+
+        // Color coding based on wait time
+        SDL_Color color = {255, 255, 255, 255};  // Default white
+        if (time > 30.0f) {
+            color = {255, 0, 0, 255};  // Red for long wait
+        } else if (time > 15.0f) {
+            color = {255, 255, 0, 255};  // Yellow for medium wait
+        }
+
+        m_text->setText(ss.str(), color);
+        m_text->render(MARGIN, y);
+        y += LINE_HEIGHT;
+    }
+}
+
+void VisualizationManager::renderStatistics() const {
+    float y = 500.0f;
+    const float LINE_HEIGHT = 25.0f;
+    const float MARGIN = 10.0f;
+
+    // Render overall statistics
+    std::vector<std::string> stats = {
+        "Total Vehicles: " + std::to_string(m_stats.totalVehiclesProcessed),
+        "Avg Wait: " + std::to_string(static_cast<int>(m_stats.averageWaitTime)) + "s",
+        "Max Wait: " + std::to_string(static_cast<int>(m_stats.maxWaitTime)) + "s",
+        "Max Queue: " + std::to_string(m_stats.maxQueueLength),
+        "Priority Mode: " + std::string(m_stats.priorityModeActive ? "ON" : "OFF")
+    };
+
+    for (const auto& stat : stats) {
+        m_text->setText(stat);
+        m_text->render(MARGIN, y);
+        y += LINE_HEIGHT;
+    }
+}
+
+void VisualizationManager::renderLegend() const {
+    float y = 650.0f;
+    const float LINE_HEIGHT = 20.0f;
+    const float MARGIN = 10.0f;
+
+    // Draw color legend
+    m_text->setText("Legend:", {255, 255, 255, 255});
+    m_text->render(MARGIN, y);
+    y += LINE_HEIGHT;
+
+    std::vector<std::pair<std::string, SDL_Color>> legend = {
+        {"Normal", {255, 255, 255, 255}},
+        {"Warning", {255, 255, 0, 255}},
+        {"Critical", {255, 0, 0, 255}}
+    };
+
+    for (const auto& [text, color] : legend) {
+        m_text->setText(text, color);
+        m_text->render(MARGIN, y);
+        y += LINE_HEIGHT;
+    }
+}
+
+void VisualizationManager::updateStatistics(const TrafficManager& trafficManager) {
+    // Update statistics from traffic manager
+    m_stats.totalVehiclesProcessed = trafficManager.getTotalVehiclesProcessed();
+    m_stats.averageWaitTime = trafficManager.getAverageWaitTime();
+    m_stats.maxWaitTime = trafficManager.getMaxWaitTime();
+    m_stats.maxQueueLength = trafficManager.getMaxQueueLength();
+    m_stats.priorityModeActive = trafficManager.isInPriorityMode();
+}
+
+// Helper function to convert LaneId to string
+std::string getLaneString(LaneId lane) {
+    switch (lane) {
+        case LaneId::AL1_INCOMING: return "A1";
+        case LaneId::AL2_PRIORITY: return "A2";
+        case LaneId::AL3_FREELANE: return "A3";
+        case LaneId::BL1_INCOMING: return "B1";
+        case LaneId::BL2_PRIORITY: return "B2";
+        case LaneId::BL3_FREELANE: return "B3";
+        case LaneId::CL1_INCOMING: return "C1";
+        case LaneId::CL2_PRIORITY: return "C2";
+        case LaneId::CL3_FREELANE: return "C3";
+        case LaneId::DL1_INCOMING: return "D1";
+        case LaneId::DL2_PRIORITY: return "D2";
+        case LaneId::DL3_FREELANE: return "D3";
+        default: return "Unknown";
+    }
+}
+
+// src/visualization/debug_overlay.h
+#ifndef DEBUG_OVERLAY_H
+#define DEBUG_OVERLAY_H
+
+#include <SDL3/SDL.h>
+#include "../traffic/traffic_manager.h"
+#include "text.h"
+
+class DebugOverlay {
+public:
+    DebugOverlay(SDL_Renderer* renderer, TTF_Font* font);
+    void render(const TrafficManager& manager);
+    void toggleDisplay() { m_isVisible = !m_isVisible; }
+
+private:
+    SDL_Renderer* m_renderer;
+    std::unique_ptr<Text> m_text;
+    bool m_isVisible;
+
+    void renderDebugInfo(const TrafficManager& manager) const;
+    void renderGrid() const;
+    void renderVehicleDebug(const Vehicle* vehicle) const;
+};
+
+// src/visualization/debug_overlay.cpp
+#include "debug_overlay.h"
+
+DebugOverlay::DebugOverlay(SDL_Renderer* renderer, TTF_Font* font)
+    : m_renderer(renderer)
+    , m_text(std::make_unique<Text>(renderer, font))
+    , m_isVisible(false) {}
+
+void DebugOverlay::render(const TrafficManager& manager) {
+    if (!m_isVisible) return;
+
+    renderGrid();
+    renderDebugInfo(manager);
+}
+
+void DebugOverlay::renderGrid() const {
+    // Draw grid lines for visualization
+    SDL_SetRenderDrawColor(m_renderer, 50, 50, 50, 255);
+
+    // Vertical lines
+    for (int x = 0; x < 1280; x += 50) {
+        SDL_RenderDrawLine(m_renderer, x, 0, x, 720);
+    }
+
+    // Horizontal lines
+    for (int y = 0; y < 720; y += 50) {
+        SDL_RenderDrawLine(m_renderer, 0, y, 1280, y);
+    }
+}
+
+void DebugOverlay::renderDebugInfo(const TrafficManager& manager) const {
+    float y = 10.0f;
+    const float LINE_HEIGHT = 20.0f;
+
+    // Render simulation timing info
+    std::stringstream ss;
+    ss << "Frame Time: " << std::fixed << std::setprecision(2)
+       << SDL_GetTicks() / 1000.0f << "s";
+    m_text->setText(ss.str());
+    m_text->render(1000, y);
+    y += LINE_HEIGHT;
+
+    // Render memory usage
+    ss.str("");
+    ss << "Active Vehicles: " << manager.getActiveVehicleCount();
+    m_text->setText(ss.str());
+    m_text->render(1000, y);
+}
+
+void DebugOverlay::renderVehicleDebug(const Vehicle* vehicle) const {
+    if (!vehicle) return;
+
+    // Draw vehicle bounding box
+    SDL_FRect bounds = {
+        vehicle->getPosition().x - 20,
+        vehicle->getPosition().y - 20,
+        40, 40
+    };
+    SDL_SetRenderDrawColor(m_renderer, 255, 0, 0, 255);
+    SDL_RenderDrawRect(m_renderer, &bounds);
+
+    // Draw vehicle info
+    std::stringstream ss;
+    ss << "ID: " << vehicle->getId() << "\n"
+       << "Lane: " << getLaneString(vehicle->getCurrentLaneId()) << "\n"
+       << "Wait: " << std::fixed << std::setprecision(1)
+       << vehicle->getWaitTime() << "s";
+
+    m_text->setText(ss.str());
+    m_text->render(
+        static_cast<int>(vehicle->getPosition().x) + 25,
+        static_cast<int>(vehicle->getPosition().y) - 25
+    );
+}
+
+
+================================================================================
+File: src\visualization\visualization_manager.h
+================================================================================
+
+// src/visualization/visualization_manager.h
+#ifndef VISUALIZATION_MANAGER_H
+#define VISUALIZATION_MANAGER_H
+
+#include <SDL3/SDL.h>
+#include <SDL3_ttf/SDL_ttf.h>
+#include "../traffic/traffic_manager.h"
+#include "../core/text.h"
+#include <memory>
+
+class VisualizationManager {
+public:
+    VisualizationManager(SDL_Renderer* renderer);
+    ~VisualizationManager();
+
+    void render(const TrafficManager& trafficManager);
+    void updateStatistics(const TrafficManager& trafficManager);
+
+private:
+    SDL_Renderer* m_renderer;
+    TTF_Font* m_font;
+    std::unique_ptr<Text> m_text;
+
+    // Statistics tracking
+    struct Statistics {
+        int totalVehiclesProcessed;
+        float averageWaitTime;
+        float maxWaitTime;
+        int maxQueueLength;
+        bool priorityModeActive;
+
+        Statistics()
+            : totalVehiclesProcessed(0)
+            , averageWaitTime(0.0f)
+            , maxWaitTime(0.0f)
+            , maxQueueLength(0)
+            , priorityModeActive(false) {}
+    } m_stats;
+
+    void renderBackground() const;
+    void renderQueueLengths(const TrafficManager& manager) const;
+    void renderWaitTimes(const TrafficManager& manager) const;
+    void renderStatistics() const;
+    void renderLegend() const;
+};
+
+#endif // VISUALIZATION_MANAGER_H

@@ -1,38 +1,36 @@
-#pragma once
-#include <SDL3/SDL.h>
-#include <cstdint>
+// traffic_light.h
+#ifndef TRAFFIC_LIGHT_H
+#define TRAFFIC_LIGHT_H
 
-enum class LightState : std::uint8_t {
+#include <SDL3/SDL.h>
+
+enum class LightState {
     RED,
-    GREEN,
-    YELLOW
+    GREEN
 };
 
 class TrafficLight {
 public:
-    TrafficLight(SDL_Renderer* renderer, float x, float y, bool isHorizontal);
-    ~TrafficLight() = default;
+    TrafficLight(SDL_Renderer* renderer, float x, float y);
 
     void update(float deltaTime);
     void render() const;
-    void setState(LightState newState);
+    void setState(LightState state);
 
-    LightState getState() const { return m_currentState; }
-    bool isGreen() const { return m_currentState == LightState::GREEN; }
-    float getTimeInState() const { return m_stateTimer; }
+    bool isGreen() const { return m_state == LightState::GREEN; }
+
+    // Synchronization
+    void synchronizeWith(TrafficLight* other);
 
 private:
     SDL_Renderer* m_renderer;
-    LightState m_currentState;
-    float m_stateTimer;
-    float m_position[2];  // x, y
-    bool m_isHorizontal;
+    LightState m_state;
+    float m_timer;
+    float m_x, m_y;
+    TrafficLight* m_syncedLight;
 
-    // Light timing constants
-    static constexpr float GREEN_DURATION = 10.0f;   // 10 seconds green
-    static constexpr float YELLOW_DURATION = 3.0f;   // 3 seconds yellow
-    static constexpr float RED_DURATION = 13.0f;     // Matches other light's cycle
-
-    void renderLight(float x, float y, SDL_FColor color) const;
+    // Timing constants
+    static constexpr float STATE_DURATION = 10.0f;  // 10 seconds per state
 };
 
+#endif // TRAFFIC_LIGHT_H

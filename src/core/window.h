@@ -1,3 +1,4 @@
+// src/core/window.h
 #ifndef WINDOW_H
 #define WINDOW_H
 
@@ -6,23 +7,23 @@
 
 class Window {
 public:
-  Window(const std::string &title, int width, int height);
-  ~Window();
+    // Initialize window with given title and dimensions
+    Window(const std::string& title, int width, int height);
+    ~Window();
 
-  // To disble copy operator and assignment
-  // this is done to ensure two instance of the Window is not create and make some bad things happen
+    // Main window operations
+    void clear() const;       // Clear the rendering canvas
+    void present() const;     // Display the rendered content
 
-  Window(const Window &) = delete;
-  Window &operator=(const Window &) = delete;
-
-  SDL_Window *get() const { return m_window; }
-  SDL_Renderer *renderer() { return m_renderer; }
-  void clear() const;
-  void present() const;
+    // Access underlying SDL components
+    SDL_Renderer* getRenderer() { return m_renderer; }
+    SDL_Window* getWindow() { return m_window; }
 
 private:
-  SDL_Window *m_window = nullptr;
-  SDL_Renderer *m_renderer = nullptr;
+    SDL_Window* m_window;
+    SDL_Renderer* m_renderer;
+    int m_width;
+    int m_height;
 };
 
-#endif
+#endif // WINDOW_H

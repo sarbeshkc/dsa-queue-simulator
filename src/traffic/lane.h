@@ -1,28 +1,38 @@
-#pragma once
+// src/traffic/lane.h
+#ifndef LANE_H
+#define LANE_H
+
 #include <SDL3/SDL.h>
+#include "../common/types.h"
 #include "vehicle.h"
-#include "traffic_queue.h"
-#include <vector>
+#include <queue>
 
 class Lane {
 public:
-    Lane(SDL_Renderer* renderer, LaneId id, Vector2D start, Vector2D end, bool isPriority = false);
-    void render() const;
-    void update(float deltaTime);
+    // Constructor that matches how it's being called in the code
+    Lane(SDL_Renderer* renderer, LaneId id, Vector2D start = Vector2D(),
+         Vector2D end = Vector2D(), bool isPriority = false);
 
-    // Lane management
+    // Core functionality
+    void update(float deltaTime);
+    void render() const;
+
+    // Vehicle management
     void addVehicle(Vehicle* vehicle);
-    bool isPriorityLane() const { return m_isPriority; }
-    int getVehicleCount() const { return static_cast<int>(m_vehicles.size()); }
-    LaneId getId() const { return m_id; }
+    Vehicle* processNextVehicle();
+    int getQueueLength() const;
+    bool isPriorityLane() const;
 
 private:
-    void positionVehicleInQueue(Vehicle* vehicle, size_t queuePosition = 0);
-
     SDL_Renderer* m_renderer;
     LaneId m_id;
     Vector2D m_startPos;
     Vector2D m_endPos;
     bool m_isPriority;
-    std::vector<Vehicle*> m_vehicles;
+    float m_processingTimer;
+    std::queue<Vehicle*> m_queue;
+
+    static constexpr float PROCESS_TIME = 2.0f;
 };
+
+#endif // LANE_H

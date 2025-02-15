@@ -1,33 +1,36 @@
-#pragma once
-#include "traffic_queue.h"
-#include <unordered_map>
+// src/traffic/traffic_manager.h
+#ifndef TRAFFIC_MANAGER_H
+#define TRAFFIC_MANAGER_H
+
+#include "lane.h"
+#include "queue_processor.h"
+#include "vehicle.h"
+#include <map>
+#include <memory>
 #include <vector>
 
 class TrafficManager {
 public:
-    TrafficManager();
-
-    // Queue management
-    void addVehicle(Vehicle* vehicle, LaneId lane);
-    void update(float deltaTime);
-
-    // Lane processing
-    void processLanes();
-    bool shouldProcessPriorityLane() const;
-    bool isInPriorityMode() const { return m_inPriorityMode; }
+  TrafficManager(SDL_Renderer *renderer);
+  void update(float deltaTime);
+  void render() const;
+  void addVehicle(Vehicle *vehicle);
+  void processLanes(float deltaTime);
+  void checkPriorityConditions();
 
 private:
-    std::unordered_map<LaneId, TrafficQueue> m_queues;
-    bool m_inPriorityMode = false;
+  SDL_Renderer *m_renderer;
+  std::map<LaneId, std::unique_ptr<Lane>> m_lanes;
+  std::unique_ptr<QueueProcessor> m_queueProcessor;
+  bool m_priorityMode;
 
-    // Constants for priority handling
-    static constexpr int PRIORITY_THRESHOLD_HIGH = 10;
-    static constexpr int PRIORITY_THRESHOLD_LOW = 5;
-    static constexpr float PROCESSING_TIME = 2.0f; // Time to process one vehicle
+  // Add these missing method declarations
+  void processPriorityLanes(float deltaTime);
+  std::vector<Vehicle *> readNewVehicles();
 
-    // Helper methods
-    void checkPriorityConditions();
-    void processNormalCondition();
-    void processPriorityCondition();
-    float calculateAverageQueueLength() const;
+
+  int calculateVehiclesToProcess() const;
+
 };
+
+#endif // TRAFFIC_MANAGER_H
