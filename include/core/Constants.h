@@ -1,7 +1,6 @@
-// src/common/types.h
+// include/core/Constants.h
 #pragma once
 #include <cstdint>
-#include <string>
 
 enum class LaneId {
     AL1_INCOMING,
@@ -18,9 +17,18 @@ enum class LaneId {
     DL3_FREELANE
 };
 
+enum class Direction {
+    STRAIGHT,
+    LEFT,
+    RIGHT
+};
+
 enum class LightState {
     RED,
     GREEN
 };
 
-;
+// Add operator== for LightState
+inline bool operator==(LightState lhs, LightState rhs) {
+    return static_cast<int>(lhs) == static_cast<int>(rhs);
+}
