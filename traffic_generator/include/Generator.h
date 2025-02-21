@@ -11,13 +11,18 @@
 #include <iomanip>
 #include "core/Constants.h"
 
+#include <mutex>
+
 class Generator {
 private:
+
     std::mt19937 rng;
     std::map<LaneId, std::filesystem::path> laneFiles;
     uint32_t nextVehicleId;
     std::filesystem::path dataDir;
     std::chrono::steady_clock::time_point lastGenTime;
+
+    std::mutex fileMutex;  // Add mutex member
 
     // Generation settings
     struct LaneSettings {

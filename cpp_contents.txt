@@ -3,7 +3,6 @@
 File: include\core\Constants.h
 ================================================================================
 
-// include/core/Constants.h
 #pragma once
 #include <cstdint>
 
@@ -33,10 +32,141 @@ enum class LightState {
     GREEN
 };
 
-// Add operator== for LightState
-inline bool operator==(LightState lhs, LightState rhs) {
-    return static_cast<int>(lhs) == static_cast<int>(rhs);
+namespace SimConstants {
+    // Window and Display
+    static constexpr int WINDOW_WIDTH = 1280;  // Increased for better visibility
+    static constexpr int WINDOW_HEIGHT = 960;
+
+    // Road and Lane Configuration
+    static constexpr int ROAD_WIDTH = 360;     // Increased for 3 lanes (120 * 3)
+    static constexpr int LANE_WIDTH = 120;     // Increased individual lane width
+    static constexpr int CENTER_X = WINDOW_WIDTH / 2;
+    static constexpr int CENTER_Y = WINDOW_HEIGHT / 2;
+
+    // Vehicle and Queue Configuration
+    static constexpr float VEHICLE_WIDTH = 40.0f;
+    static constexpr float VEHICLE_HEIGHT = 30.0f;
+    static constexpr float QUEUE_SPACING = 60.0f;  // Increased spacing between vehicles
+    static constexpr float QUEUE_START_OFFSET = 200.0f;
+
+    // Traffic Light Configuration
+    static constexpr float LIGHT_SIZE = 40.0f;
+    static constexpr float LIGHT_SPACING = 60.0f;
+
+    // Communication Configuration
+    static constexpr int FILE_CHECK_INTERVAL = 100;  // ms
+    static constexpr int TRAFFIC_UPDATE_INTERVAL = 50;  // ms
+
+    // Vehicle Movement
+    static constexpr float VEHICLE_BASE_SPEED = 100.0f;
+    static constexpr float VEHICLE_TURN_SPEED = 60.0f;
+    static constexpr float INTERSECTION_RADIUS = 180.0f;  // For turning calculations
 }
+
+// Lane Configuration Structure
+struct LaneConfig {
+    LaneId id;
+    float xOffset;  // Relative to center
+    float yOffset;  // Relative to center
+    bool isPriority;
+    Direction defaultDirection;
+};
+
+// Define standard lane configurations
+namespace LaneConfigs {
+    static const LaneConfig LANE_CONFIGS[] = {
+        // Road A (Left)
+        {LaneId::AL1_INCOMING, -SimConstants::ROAD_WIDTH, -SimConstants::LANE_WIDTH, false, Direction::STRAIGHT},
+        {LaneId::AL2_PRIORITY, -SimConstants::ROAD_WIDTH, 0, true, Direction::STRAIGHT},
+        {LaneId::AL3_FREELANE, -SimConstants::ROAD_WIDTH, SimConstants::LANE_WIDTH, false, Direction::LEFT},
+
+        // Road B (Top)
+        {LaneId::BL1_INCOMING, -SimConstants::LANE_WIDTH, -SimConstants::ROAD_WIDTH, false, Direction::STRAIGHT},
+        {LaneId::BL2_NORMAL, 0, -SimConstants::ROAD_WIDTH, false, Direction::STRAIGHT},
+        {LaneId::BL3_FREELANE, SimConstants::LANE_WIDTH, -SimConstants::ROAD_WIDTH, false, Direction::LEFT},
+
+        // Road C (Right)
+        {LaneId::CL1_INCOMING, SimConstants::ROAD_WIDTH, -SimConstants::LANE_WIDTH, false, Direction::STRAIGHT},
+        {LaneId::CL2_NORMAL, SimConstants::ROAD_WIDTH, 0, false, Direction::STRAIGHT},
+        {LaneId::CL3_FREELANE, SimConstants::ROAD_WIDTH, SimConstants::LANE_WIDTH, false, Direction::LEFT},
+
+        // Road D (Bottom)
+        {LaneId::DL1_INCOMING, -SimConstants::LANE_WIDTH, SimConstants::ROAD_WIDTH, false, Direction::STRAIGHT},
+        {LaneId::DL2_NORMAL, 0, SimConstants::ROAD_WIDTH, false, Direction::STRAIGHT},
+        {LaneId::DL3_FREELANE, SimConstants::LANE_WIDTH, SimConstants::ROAD_WIDTH, false, Direction::LEFT}
+    };
+
+    // Helper functions
+    static constexpr size_t TOTAL_LANES = sizeof(LANE_CONFIGS) / sizeof(LaneConfig);
+
+    static const LaneConfig* getLaneConfig(LaneId id) {
+        for (const auto& config : LANE_CONFIGS) {
+            if (config.id == id) return &config;
+        }
+        return nullptr;
+    }
+
+    // Get all lanes for a specific road (A, B, C, or D)
+    static constexpr bool isRoadALane(LaneId id) {
+        return id == LaneId::AL1_INCOMING || id == LaneId::AL2_PRIORITY || id == LaneId::AL3_FREELANE;
+    }
+
+    static constexpr bool isRoadBLane(LaneId id) {
+        return id == LaneId::BL1_INCOMING || id == LaneId::BL2_NORMAL || id == LaneId::BL3_FREELANE;
+    }
+
+    static constexpr bool isRoadCLane(LaneId id) {
+        return id == LaneId::CL1_INCOMING || id == LaneId::CL2_NORMAL || id == LaneId::CL3_FREELANE;
+    }
+
+    static constexpr bool isRoadDLane(LaneId id) {
+        return id == LaneId::DL1_INCOMING || id == LaneId::DL2_NORMAL || id == LaneId::DL3_FREELANE;
+    }
+
+    // Get lane type helpers
+    static constexpr bool isIncomingLane(LaneId id) {
+        return id == LaneId::AL1_INCOMING || id == LaneId::BL1_INCOMING ||
+               id == LaneId::CL1_INCOMING || id == LaneId::DL1_INCOMING;
+    }
+
+    static constexpr bool isFreeLane(LaneId id) {
+        return id == LaneId::AL3_FREELANE || id == LaneId::BL3_FREELANE ||
+               id == LaneId::CL3_FREELANE || id == LaneId::DL3_FREELANE;
+    }
+
+    static constexpr bool isPriorityLane(LaneId id) {
+        return id == LaneId::AL2_PRIORITY;
+    }
+};
+
+// Additional helper namespace for intersection calculations
+namespace IntersectionHelpers {
+    static constexpr float getIntersectionAngle(LaneId fromLane, LaneId toLane) {
+        if (LaneConfigs::isRoadALane(fromLane)) {
+            if (LaneConfigs::isRoadBLane(toLane)) return 90.0f;
+            if (LaneConfigs::isRoadDLane(toLane)) return -90.0f;
+        }
+        else if (LaneConfigs::isRoadBLane(fromLane)) {
+            if (LaneConfigs::isRoadCLane(toLane)) return 90.0f;
+            if (LaneConfigs::isRoadALane(toLane)) return -90.0f;
+        }
+        else if (LaneConfigs::isRoadCLane(fromLane)) {
+            if (LaneConfigs::isRoadDLane(toLane)) return 90.0f;
+            if (LaneConfigs::isRoadBLane(toLane)) return -90.0f;
+        }
+        else if (LaneConfigs::isRoadDLane(fromLane)) {
+            if (LaneConfigs::isRoadALane(toLane)) return 90.0f;
+            if (LaneConfigs::isRoadCLane(toLane)) return -90.0f;
+        }
+        return 0.0f;  // Straight path
+    }
+
+    static constexpr float getTurningRadius(Direction dir) {
+        return dir == Direction::LEFT ? SimConstants::INTERSECTION_RADIUS * 1.5f :
+               dir == Direction::RIGHT ? SimConstants::INTERSECTION_RADIUS * 0.5f :
+               SimConstants::INTERSECTION_RADIUS;
+    }
+};
 
 
 ================================================================================
@@ -135,9 +265,46 @@ File: include\managers\FileHandler.h
 #include <map>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 
 class FileHandler {
 private:
+
+
+
+    static constexpr int WINDOW_WIDTH = 1024;
+    static constexpr int WINDOW_HEIGHT = 768;
+    static constexpr int ROAD_WIDTH = 270;     // Width for 3 lanes (90 * 3)
+    static constexpr int LANE_WIDTH = 90;      // Individual lane width
+    static constexpr int CENTER_X = WINDOW_WIDTH / 2;
+    static constexpr int CENTER_Y = WINDOW_HEIGHT / 2;
+    static constexpr float QUEUE_SPACING = 40.0f;
+    static constexpr float QUEUE_START_OFFSET = 250.0f;
+
+
+
+    static const std::string BASE_PATH;
+
+
+void ensureDataDirectoryExists() {
+    const auto dataPath = std::filesystem::current_path() / "data" / "lanes";
+    std::filesystem::create_directories(dataPath);
+    std::cout << "Data directory ensured at: " << dataPath << std::endl;
+}
+
+// Add this to FileHandler class header
+void debugPrintFileContents(const std::filesystem::path& filepath) {
+    std::ifstream file(filepath);
+    if (!file) {
+        std::cerr << "Could not open file for debug: " << filepath << std::endl;
+        return;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::cout << "File content: " << line << std::endl;
+    }
+}
     std::map<LaneId, std::filesystem::path> laneFiles;
     std::map<std::filesystem::path, int64_t> lastReadPositions;
     std::filesystem::path dataDir;
@@ -157,6 +324,36 @@ private:
 File: include\managers\IntersectionController.h
 ================================================================================
 
+// include/managers/IntersectionController.h
+#pragma once
+#include "core/Constants.h"
+#include "core/Lane.h"
+#include "utils/PriorityQueue.h"
+#include <memory>
+#include <vector>
+
+class IntersectionController {
+private:
+    PriorityQueue<LaneId> laneQueue;
+    std::vector<std::unique_ptr<Lane>>& lanes;
+    bool isPriorityMode;
+    float stateTimer;
+    float vehicleProcessTime;
+
+    // Helper methods
+    void updateLanePriorities();
+    float calculateAverageWaitingVehicles() const;
+    void processVehicles(size_t count);
+    void handlePriorityLane();
+
+public:
+    IntersectionController(std::vector<std::unique_ptr<Lane>>& lanes);
+    void update(float deltaTime);
+    bool isInPriorityMode() const { return isPriorityMode; }
+    void setVehicleProcessTime(float time) { vehicleProcessTime = time; }
+};
+
+
 
 
 ================================================================================
@@ -172,14 +369,22 @@ File: include\managers\TrafficManager.h
 #include "core/Lane.h"
 #include "core/TrafficLight.h"
 #include "core/Vehicle.h"
+#include "managers/FileHandler.h"
+
 
 struct VehicleState {
+
+
+
     std::shared_ptr<Vehicle> vehicle;
     float x, y;             // Current position
     float targetX, targetY; // Target position
     float speed;            // Movement speed
     bool isMoving;
     Direction direction;
+    bool hasStartedTurn;
+    float turnProgress;
+    float waitTime;
 };
 
 class TrafficManager {
@@ -188,19 +393,34 @@ private:
     std::map<LaneId, TrafficLight> trafficLights;
     std::map<uint32_t, VehicleState> activeVehicles;
     bool inPriorityMode;
+    float stateTimer;
+    float lastUpdateTime;
+    float vehicleProcessInterval;
+
+
+ static constexpr float VEHICLE_BASE_SPEED = 20.0f;  // Reduced from 50.0f
+    static constexpr float PROCESS_INTERVAL = 3.0f;     // Increased process interval
+    static constexpr float CHECK_INTERVAL = 0.5f;
 
     // Helper methods
-    size_t calculateVehiclesToProcess() const;
-    bool checkPriorityConditions() const;
-    void processNormalLanes(size_t vehicleCount);
-    void processPriorityLane();
     void updateVehiclePositions(float deltaTime);
-    void addNewVehicleToState(std::shared_ptr<Vehicle> vehicle, LaneId laneId);
+    void updateVehicleQueuePosition(VehicleState& state, LaneId laneId, size_t queuePosition);
+    void calculateTargetPosition(VehicleState& state, LaneId laneId);
+    void updateTrafficLights(float deltaTime);
+    void synchronizeTrafficLights();
+    bool checkPriorityConditions() const;
+    void processPriorityLane();
+    void processNormalLanes(size_t vehicleCount);
+    size_t calculateVehiclesToProcess() const;
+    bool canProcessVehicle(LaneId laneId) const;
+    float calculateTurningRadius(Direction dir) const;
+    bool checkCollision(const VehicleState& state, float newX, float newY) const;
 
 public:
     TrafficManager();
     void update(float deltaTime);
     void addVehicleToLane(LaneId laneId, std::shared_ptr<Vehicle> vehicle);
+    void addNewVehicleToState(std::shared_ptr<Vehicle> vehicle, LaneId laneId);
     size_t getLaneSize(LaneId laneId) const;
     bool isInPriorityMode() const { return inPriorityMode; }
     const std::vector<std::unique_ptr<Lane>>& getLanes() const { return lanes; }
@@ -366,7 +586,8 @@ public:
 File: include\visualization\Renderer.h
 ================================================================================
 
-// include/visualization/Rend#pragma once
+// include/visualization/Renderer.h
+#pragma once
 #include <SDL3/SDL.h>
 #include "managers/TrafficManager.h"
 #include "visualization/DebugOverlay.h"
@@ -380,26 +601,37 @@ private:
     SDL_Renderer* renderer;
     DebugOverlay debugOverlay;
 
-    // Constants for visualization
-    static constexpr int WINDOW_WIDTH = 800;
-    static constexpr int WINDOW_HEIGHT = 600;
-    static constexpr int ROAD_WIDTH = 180;
-    static constexpr int LANE_WIDTH = 60;
-    static constexpr int CENTER_X = WINDOW_WIDTH / 2;
-    static constexpr int CENTER_Y = WINDOW_HEIGHT / 2;
-
-    static constexpr float VEHICLE_WIDTH = 30.0f;
-    static constexpr float VEHICLE_HEIGHT = 20.0f;
-    static constexpr float VEHICLE_SPACING = 45.0f;
-
-    // Helper functions
+    // Enhanced visualization methods
+    void renderBackground();
     void renderRoads();
-    void renderLanes(const std::vector<std::unique_ptr<Lane>>& lanes);
+    void renderLanes();
+    void renderIntersection();
+    void renderCrosswalks();
     void renderTrafficLights(const std::map<LaneId, TrafficLight>& lights);
-    void renderVehicles(const std::vector<std::unique_ptr<Lane>>& lanes);
-    void renderDirectionArrows();
-    void renderVehicle(float x, float y, Direction dir, bool isPriority, float angle);
-    float calculateVehicleAngle(LaneId laneId) const;
+    void renderVehicles(const std::map<uint32_t, VehicleState>& vehicles);
+
+    // New visualization methods
+    void renderLaneIdentifiers();
+    void renderDirectionalArrows();
+    void renderIntersectionGuidelines();
+    void renderPriorityLaneIndicators();
+    void renderQueueLengths();
+    void renderSpeedLimits();
+
+    // Enhanced vehicle rendering
+    void renderVehicle(const VehicleState& state);
+    void renderVehiclePath(const VehicleState& state);
+    void renderVehicleIndicators(const VehicleState& state);
+
+    // Helper methods
+    void drawDashedLine(float x1, float y1, float x2, float y2, float dashLength, float gapLength);
+    SDL_FPoint rotatePoint(float x, float y, float cx, float cy, float angle);
+    void renderRoundedRect(float x, float y, float w, float h, float radius);
+
+    // New helper methods
+    void drawArrow(float x, float y, float angle, Direction dir);
+    void drawLaneDivider(float x1, float y1, float x2, float y2, bool isPriority);
+    void renderText(const std::string& text, float x, float y, SDL_Color color);
 
 public:
     Renderer();
@@ -408,6 +640,12 @@ public:
     bool initialize();
     void render(const TrafficManager& trafficManager);
     void cleanup();
+    bool isInitialized() const { return window != nullptr && renderer != nullptr; }
+
+    // New public methods
+    void setDebugMode(bool enabled);
+    void toggleGridDisplay();
+    void updateWindowSize(int width, int height);
 };
 
 
@@ -756,87 +994,152 @@ File: src\managers\FileHandler.cpp
 #include <filesystem>
 #include <iostream>
 
+
+
+const std::string FileHandler::BASE_PATH = "data/lanes";
+
+// FileHandler Constructor
 FileHandler::FileHandler() {
-    // Get the executable path and set up data directory
-    dataDir = std::filesystem::current_path() / "data" / "lanes";
-    std::filesystem::create_directories(dataDir);
+    try {
+        // Get absolute path for data directory
+        dataDir = (std::filesystem::current_path() / BASE_PATH).lexically_normal();
+        std::cout << "FileHandler using absolute path: " << dataDir << std::endl;
 
-    // Initialize lane file mappings with absolute paths
-    laneFiles = {
-        {LaneId::AL1_INCOMING, dataDir / "lane_a1.txt"},
-        {LaneId::AL2_PRIORITY, dataDir / "lane_a2.txt"},
-        {LaneId::AL3_FREELANE, dataDir / "lane_a3.txt"},
-        {LaneId::BL1_INCOMING, dataDir / "lane_b1.txt"},
-        {LaneId::BL2_NORMAL, dataDir / "lane_b2.txt"},
-        {LaneId::BL3_FREELANE, dataDir / "lane_b3.txt"},
-        {LaneId::CL1_INCOMING, dataDir / "lane_c1.txt"},
-        {LaneId::CL2_NORMAL, dataDir / "lane_c2.txt"},
-        {LaneId::CL3_FREELANE, dataDir / "lane_c3.txt"},
-        {LaneId::DL1_INCOMING, dataDir / "lane_d1.txt"},
-        {LaneId::DL2_NORMAL, dataDir / "lane_d2.txt"},
-        {LaneId::DL3_FREELANE, dataDir / "lane_d3.txt"}
-    };
+        // Initialize lane files with absolute paths
+        laneFiles = {
+            {LaneId::AL1_INCOMING, (dataDir / "lane_a1.txt").lexically_normal()},
+            {LaneId::AL2_PRIORITY, (dataDir / "lane_a2.txt").lexically_normal()},
+            {LaneId::AL3_FREELANE, (dataDir / "lane_a3.txt").lexically_normal()},
+            {LaneId::BL1_INCOMING, (dataDir / "lane_b1.txt").lexically_normal()},
+            {LaneId::BL2_NORMAL,   (dataDir / "lane_b2.txt").lexically_normal()},
+            {LaneId::BL3_FREELANE, (dataDir / "lane_b3.txt").lexically_normal()},
+            {LaneId::CL1_INCOMING, (dataDir / "lane_c1.txt").lexically_normal()},
+            {LaneId::CL2_NORMAL,   (dataDir / "lane_c2.txt").lexically_normal()},
+            {LaneId::CL3_FREELANE, (dataDir / "lane_c3.txt").lexically_normal()},
+            {LaneId::DL1_INCOMING, (dataDir / "lane_d1.txt").lexically_normal()},
+            {LaneId::DL2_NORMAL,   (dataDir / "lane_d2.txt").lexically_normal()},
+            {LaneId::DL3_FREELANE, (dataDir / "lane_d3.txt").lexically_normal()}
+        };
 
-    // Create empty files and initialize read positions
-    for (const auto& [_, filepath] : laneFiles) {
-        std::ofstream file(filepath.string());
-        lastReadPositions[filepath] = 0;
+        // Create data directory if it doesn't exist
+        std::filesystem::create_directories(dataDir);
+
+        // Verify all files exist and are readable
+        for (const auto& [laneId, filepath] : laneFiles) {
+            std::cout << "Checking file for lane " << static_cast<int>(laneId)
+                     << ": " << filepath << std::endl;
+
+            // Create file if it doesn't exist
+            if (!std::filesystem::exists(filepath)) {
+                std::cout << "File does not exist, creating: " << filepath << std::endl;
+                std::ofstream createFile(filepath);
+                if (!createFile) {
+                    throw std::runtime_error("Cannot create file: " + filepath.string());
+                }
+                createFile.close();
+            }
+
+            // Verify read access
+            std::ifstream testRead(filepath);
+            if (!testRead) {
+                throw std::runtime_error("Cannot read from " + filepath.string());
+            }
+            testRead.close();
+
+            // Initialize read position
+            lastReadPositions[filepath] = 0;
+
+            std::cout << "Successfully verified file: " << filepath << std::endl;
+        }
+
+        std::cout << "FileHandler successfully initialized" << std::endl;
+        std::cout << "Data directory: " << dataDir << std::endl;
+        std::cout << "Number of lanes: " << laneFiles.size() << std::endl;
+
+    } catch (const std::exception& e) {
+        std::cerr << "FileHandler initialization failed: " << e.what() << std::endl;
+        throw;
     }
-}
-
-// src/managers/FileHandler.cpp
+}// src/managers/FileHandler.cpp
 std::vector<std::pair<LaneId, std::shared_ptr<Vehicle>>> FileHandler::readNewVehicles() {
     std::vector<std::pair<LaneId, std::shared_ptr<Vehicle>>> newVehicles;
 
+    std::cout << "\n=== Reading Vehicle Files ===" << std::endl;
+
     for (const auto& [laneId, filepath] : laneFiles) {
+        std::cout << "Checking file: " << filepath << std::endl;
+
+        if (!std::filesystem::exists(filepath)) {
+            std::cerr << "File does not exist: " << filepath << std::endl;
+            continue;
+        }
+
         std::ifstream file(filepath.string(), std::ios::in);
-        if (!file) continue;
+        if (!file) {
+            std::cerr << "Cannot open file: " << filepath << std::endl;
+            continue;
+        }
 
         // Get file size
         file.seekg(0, std::ios::end);
         int64_t fileSize = file.tellg();
+        std::cout << "File size: " << fileSize << " bytes" << std::endl;
+        std::cout << "Last read position: " << lastReadPositions[filepath] << std::endl;
 
-        // If there's new data
         if (fileSize > lastReadPositions[filepath]) {
             file.seekg(lastReadPositions[filepath]);
             std::string line;
 
             while (std::getline(file, line)) {
+                std::cout << "Reading line: " << line << std::endl;
+
+                // Skip empty lines
                 if (line.empty()) continue;
 
+                // Parse vehicle data (format: "ID,Direction;")
                 size_t commaPos = line.find(',');
                 size_t semicolonPos = line.find(';');
 
                 if (commaPos != std::string::npos && semicolonPos != std::string::npos) {
                     try {
+                        // Parse ID
                         uint32_t id = std::stoul(line.substr(0, commaPos));
-                        char dirChar = line[commaPos + 1];
 
+                        // Parse direction
+                        char dirChar = line[commaPos + 1];
                         Direction dir;
                         switch (dirChar) {
                             case 'S': dir = Direction::STRAIGHT; break;
                             case 'L': dir = Direction::LEFT; break;
                             case 'R': dir = Direction::RIGHT; break;
-                            default: continue;
+                            default:
+                                std::cerr << "Invalid direction character: " << dirChar << std::endl;
+                                continue;
                         }
+
+                        std::cout << "Creating vehicle: ID=" << id
+                                 << ", Direction=" << static_cast<int>(dir)
+                                 << ", Lane=" << static_cast<int>(laneId) << std::endl;
 
                         auto vehicle = std::make_shared<Vehicle>(id, dir, laneId);
                         newVehicles.emplace_back(laneId, vehicle);
-
-                        std::cout << "Read vehicle " << id << " from lane "
-                                 << static_cast<int>(laneId) << std::endl;
-                    } catch (...) {
-                        std::cerr << "Error parsing line: " << line << std::endl;
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error parsing line: " << line << " - " << e.what() << std::endl;
                     }
+                } else {
+                    std::cerr << "Invalid line format: " << line << std::endl;
                 }
             }
 
             lastReadPositions[filepath] = file.tellg();
+            std::cout << "Updated read position to: " << lastReadPositions[filepath] << std::endl;
         }
     }
 
+    std::cout << "Found " << newVehicles.size() << " new vehicles" << std::endl;
     return newVehicles;
 }
+
 
 std::vector<std::shared_ptr<Vehicle>> FileHandler::parseVehicleData(
     const std::string& data, LaneId laneId) {
@@ -874,103 +1177,105 @@ std::vector<std::shared_ptr<Vehicle>> FileHandler::parseVehicleData(
 }
 
 void FileHandler::clearLaneFiles() {
-    for (const auto& [_, filename] : laneFiles) {
-        std::ofstream file(filename, std::ios::trunc);
-        lastReadPositions[filename] = 0;
+    for (const auto& [_, filepath] : laneFiles) {
+        std::ofstream file(filepath, std::ios::trunc);
+        lastReadPositions[filepath] = 0;
     }
 }
+
+
+
 
 
 ================================================================================
 File: src\managers\IntersectionController.cpp
 ================================================================================
 
-
-
-================================================================================
-File: src\managers\TrafficManager.cpp
-================================================================================
-
-// src/managers/TrafficManager.cpp
-#include "managers/TrafficManager.h"
-#include "managers/FileHandler.h"
+// src/managers/IntersectionController.cpp
+#include "managers/IntersectionController.h"
+#include <numeric>
 #include <algorithm>
 #include <cmath>
 
-TrafficManager::TrafficManager() : inPriorityMode(false) {
-    // Initialize lanes
-    lanes.push_back(std::make_unique<Lane>(LaneId::AL1_INCOMING, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::AL2_PRIORITY, true));
-    lanes.push_back(std::make_unique<Lane>(LaneId::AL3_FREELANE, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::BL1_INCOMING, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::BL2_NORMAL, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::BL3_FREELANE, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::CL1_INCOMING, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::CL2_NORMAL, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::CL3_FREELANE, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::DL1_INCOMING, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::DL2_NORMAL, false));
-    lanes.push_back(std::make_unique<Lane>(LaneId::DL3_FREELANE, false));
-
-    // Initialize traffic lights
-    trafficLights[LaneId::AL2_PRIORITY] = TrafficLight();
-    trafficLights[LaneId::BL2_NORMAL] = TrafficLight();
-    trafficLights[LaneId::CL2_NORMAL] = TrafficLight();
-    trafficLights[LaneId::DL2_NORMAL] = TrafficLight();
-}
-
-void TrafficManager::update(float deltaTime) {
-    // Update traffic lights
-    for (auto& [_, light] : trafficLights) {
-        light.update(deltaTime);
-    }
-
-    // Read new vehicles from files
-    FileHandler fileHandler;
-    auto newVehicles = fileHandler.readNewVehicles();
-    for (const auto& [laneId, vehicle] : newVehicles) {
-        addVehicleToLane(laneId, vehicle);
-        addNewVehicleToState(vehicle, laneId);
-    }
-
-    // Update vehicle positions
-    updateVehiclePositions(deltaTime);
-
-    // Process lanes based on traffic rules
-    if (checkPriorityConditions()) {
-        inPriorityMode = true;
-        processPriorityLane();
-    } else if (!inPriorityMode) {
-        size_t vehiclesToProcess = calculateVehiclesToProcess();
-        processNormalLanes(vehiclesToProcess);
+IntersectionController::IntersectionController(std::vector<std::unique_ptr<Lane>>& lanes)
+    : lanes(lanes)
+    , isPriorityMode(false)
+    , stateTimer(0.0f)
+    , vehicleProcessTime(2.0f) {
+    // Initialize lane queue with default priorities
+    for (const auto& lane : lanes) {
+        if (lane->getId() != LaneId::AL3_FREELANE &&
+            lane->getId() != LaneId::BL3_FREELANE &&
+            lane->getId() != LaneId::CL3_FREELANE &&
+            lane->getId() != LaneId::DL3_FREELANE) {
+            laneQueue.enqueuePriority(lane->getId(), 1);
+        }
     }
 }
 
-void TrafficManager::updateVehiclePositions(float deltaTime) {
-    auto it = activeVehicles.begin();
-    while (it != activeVehicles.end()) {
-        auto& state = it->second;
-        if (state.isMoving) {
-            float dx = state.targetX - state.x;
-            float dy = state.targetY - state.y;
-            float distance = std::sqrt(dx*dx + dy*dy);
+void IntersectionController::update(float deltaTime) {
+    stateTimer += deltaTime;
 
-            if (distance < 1.0f) {
-                it = activeVehicles.erase(it);
-                continue;
+    // Update lane priorities based on waiting vehicles
+    updateLanePriorities();
+
+    // Check priority conditions
+    auto priorityLane = std::find_if(lanes.begin(), lanes.end(),
+        [](const auto& lane) {
+            return lane->isPriorityLane() && lane->getQueueSize() > 10;
+        });
+
+    if (priorityLane != lanes.end()) {
+        isPriorityMode = true;
+        handlePriorityLane();
+    } else {
+        isPriorityMode = false;
+        if (stateTimer >= vehicleProcessTime) {
+            float avgVehicles = calculateAverageWaitingVehicles();
+            processVehicles(static_cast<size_t>(std::ceil(avgVehicles)));
+            stateTimer = 0.0f;
+        }
+    }
+
+    // Process free lanes continuously
+    for (auto& lane : lanes) {
+        if (lane->getId() == LaneId::AL3_FREELANE ||
+            lane->getId() == LaneId::BL3_FREELANE ||
+            lane->getId() == LaneId::CL3_FREELANE ||
+            lane->getId() == LaneId::DL3_FREELANE) {
+            while (lane->getQueueSize() > 0) {
+                lane->removeVehicle();
+            }
+        }
+    }
+}
+
+void IntersectionController::updateLanePriorities() {
+    // Clear and update lane queue
+    while (!laneQueue.isEmpty()) {
+        laneQueue.dequeue();
+    }
+
+    for (const auto& lane : lanes) {
+        LaneId id = lane->getId();
+        if (id != LaneId::AL3_FREELANE &&
+            id != LaneId::BL3_FREELANE &&
+            id != LaneId::CL3_FREELANE &&
+            id != LaneId::DL3_FREELANE) {
+
+            int priority = 1;
+            if (lane->isPriorityLane() && lane->getQueueSize() > 5) {
+                priority = 3;
+            } else if (lane->getQueueSize() > 8) {
+                priority = 2;
             }
 
-            float moveX = (dx / distance) * state.speed * deltaTime;
-            float moveY = (dy / distance) * state.speed * deltaTime;
-
-            state.x += moveX;
-            state.y += moveY;
+            laneQueue.enqueuePriority(id, priority);
         }
-        ++it;
     }
 }
 
-size_t TrafficManager::calculateVehiclesToProcess() const {
+float IntersectionController::calculateAverageWaitingVehicles() const {
     size_t totalVehicles = 0;
     size_t normalLaneCount = 0;
 
@@ -985,166 +1290,641 @@ size_t TrafficManager::calculateVehiclesToProcess() const {
         }
     }
 
-    if (normalLaneCount == 0) return 0;
-    return static_cast<size_t>(std::ceil(static_cast<double>(totalVehicles) / static_cast<double>(normalLaneCount)));
+    return normalLaneCount > 0 ?
+        static_cast<float>(totalVehicles) / static_cast<float>(normalLaneCount) : 0.0f;
 }
 
-bool TrafficManager::checkPriorityConditions() const {
-    for (const auto& lane : lanes) {
-        if (lane->isPriorityLane() && lane->getQueueSize() > 10) {
-            return true;
+void IntersectionController::processVehicles(size_t count) {
+    if (count == 0) return;
+
+    // Process vehicles based on priority queue
+    std::vector<LaneId> processedLanes;
+    while (!laneQueue.isEmpty() && processedLanes.size() < count) {
+        LaneId currentLaneId = laneQueue.dequeue();
+
+        auto laneIt = std::find_if(lanes.begin(), lanes.end(),
+            [currentLaneId](const auto& lane) {
+                return lane->getId() == currentLaneId;
+            });
+
+        if (laneIt != lanes.end() && (*laneIt)->getQueueSize() > 0) {
+            (*laneIt)->removeVehicle();
+            processedLanes.push_back(currentLaneId);
         }
     }
-    return false;
 }
 
-void TrafficManager::processNormalLanes(size_t vehicleCount) {
-    for (auto& lane : lanes) {
-        if (!lane->isPriorityLane()) {
-            for (size_t i = 0; i < vehicleCount && lane->getQueueSize() > 0; ++i) {
-                lane->removeVehicle();
-            }
-        }
-    }
-}
-
-void TrafficManager::processPriorityLane() {
+void IntersectionController::handlePriorityLane() {
     for (auto& lane : lanes) {
         if (lane->isPriorityLane()) {
             while (lane->getQueueSize() > 5) {
                 lane->removeVehicle();
             }
-            if (lane->getQueueSize() <= 5) {
-                inPriorityMode = false;
-            }
+            break;
         }
     }
 }
 
-void TrafficManager::addVehicleToLane(LaneId laneId, std::shared_ptr<Vehicle> vehicle) {
-    auto it = std::find_if(lanes.begin(), lanes.end(),
-                          [laneId](const auto& lane) { return lane->getId() == laneId; });
-    if (it != lanes.end()) {
-        (*it)->addVehicle(vehicle);
+
+
+================================================================================
+File: src\managers\TrafficManager.cpp
+================================================================================
+
+
+// src/managers/TrafficManager.cpp
+#include "managers/TrafficManager.h"
+#include <algorithm>
+#include <cmath>
+#include <iostream>
+
+TrafficManager::TrafficManager()
+    : inPriorityMode(false), stateTimer(0.0f), lastUpdateTime(0.0f),
+      vehicleProcessInterval(2.0f) {
+
+  // Initialize lanes
+  lanes.push_back(std::make_unique<Lane>(LaneId::AL1_INCOMING, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::AL2_PRIORITY, true));
+  lanes.push_back(std::make_unique<Lane>(LaneId::AL3_FREELANE, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::BL1_INCOMING, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::BL2_NORMAL, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::BL3_FREELANE, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::CL1_INCOMING, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::CL2_NORMAL, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::CL3_FREELANE, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::DL1_INCOMING, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::DL2_NORMAL, false));
+  lanes.push_back(std::make_unique<Lane>(LaneId::DL3_FREELANE, false));
+
+  // Initialize traffic lights
+  trafficLights[LaneId::AL2_PRIORITY] = TrafficLight();
+  trafficLights[LaneId::BL2_NORMAL] = TrafficLight();
+  trafficLights[LaneId::CL2_NORMAL] = TrafficLight();
+  trafficLights[LaneId::DL2_NORMAL] = TrafficLight();
+
+  synchronizeTrafficLights();
+}
+
+// In TrafficManager.cpp, modify the update method:
+
+//# Then update TrafficManager.cpp:
+void TrafficManager::update(float deltaTime) {
+    stateTimer += deltaTime;
+    lastUpdateTime += deltaTime;
+
+    static float fileCheckTimer = 0.0f;
+    fileCheckTimer += deltaTime;
+
+    // Slow down file checking
+    if (fileCheckTimer >= CHECK_INTERVAL) {
+        std::cout << "\nChecking for new vehicles..." << std::endl;
+        FileHandler fileHandler;
+        auto newVehicles = fileHandler.readNewVehicles();
+
+        for (const auto& [laneId, vehicle] : newVehicles) {
+            std::cout << "Processing new vehicle: ID=" << vehicle->getId()
+                     << " Lane=" << static_cast<int>(laneId)
+                     << " Direction=" << static_cast<int>(vehicle->getDirection()) << std::endl;
+
+            addVehicleToLane(laneId, vehicle);
+            addNewVehicleToState(vehicle, laneId);
+        }
+        fileCheckTimer = 0.0f;
     }
+
+    // Update positions with slower speed
+    updateVehiclePositions(deltaTime);
+
+    // Process priority conditions less frequently
+    if (checkPriorityConditions()) {
+        if (!inPriorityMode) {
+            synchronizeTrafficLights();
+        }
+        inPriorityMode = true;
+        processPriorityLane();
+    } else {
+        if (inPriorityMode) {
+            synchronizeTrafficLights();
+        }
+        inPriorityMode = false;
+        if (lastUpdateTime >= PROCESS_INTERVAL) {  // Use longer interval
+            size_t vehiclesToProcess = calculateVehiclesToProcess();
+            processNormalLanes(vehiclesToProcess);
+            lastUpdateTime = 0.0f;
+        }
+    }
+
+    updateTrafficLights(deltaTime);
+}
+
+
+void TrafficManager::synchronizeTrafficLights() {
+  if (inPriorityMode) {
+    trafficLights[LaneId::AL2_PRIORITY].setState(LightState::GREEN);
+    trafficLights[LaneId::BL2_NORMAL].setState(LightState::RED);
+    trafficLights[LaneId::CL2_NORMAL].setState(LightState::RED);
+    trafficLights[LaneId::DL2_NORMAL].setState(LightState::RED);
+  } else {
+    trafficLights[LaneId::AL2_PRIORITY].setState(LightState::RED);
+    trafficLights[LaneId::BL2_NORMAL].setState(LightState::GREEN);
+    trafficLights[LaneId::CL2_NORMAL].setState(LightState::RED);
+    trafficLights[LaneId::DL2_NORMAL].setState(LightState::GREEN);
+  }
+}
+
+void TrafficManager::addVehicleToLane(LaneId laneId,
+                                      std::shared_ptr<Vehicle> vehicle) {
+  auto it =
+      std::find_if(lanes.begin(), lanes.end(), [laneId](const auto &lane) {
+        return lane->getId() == laneId;
+      });
+  if (it != lanes.end()) {
+    (*it)->addVehicle(vehicle);
+  }
+}
+
+// Then update TrafficManager::addNewVehicleToState
+void TrafficManager::addNewVehicleToState(std::shared_ptr<Vehicle> vehicle, LaneId laneId) {
+    using namespace SimConstants;
+
+
+
+
+    VehicleState state;
+    state.vehicle = vehicle;
+    state.speed = VEHICLE_BASE_SPEED;  // Use slower base speed
+    state.isMoving = false;
+    state.direction = vehicle->getDirection();
+    state.hasStartedTurn = false;
+    state.turnProgress = 0.0f;
+    state.waitTime = 0.0f;
+
+    // Calculate queue position
+    size_t queuePosition = getLaneSize(laneId);
+
+    // Set initial position based on lane
+    switch (laneId) {
+        // Left side lanes (A)
+        case LaneId::AL1_INCOMING:
+            state.x = CENTER_X - QUEUE_START_OFFSET - (queuePosition * QUEUE_SPACING);
+            state.y = CENTER_Y - LANE_WIDTH + (LANE_WIDTH/2);
+            break;
+        case LaneId::AL2_PRIORITY:
+            state.x = CENTER_X - QUEUE_START_OFFSET - (queuePosition * QUEUE_SPACING);
+            state.y = CENTER_Y + (LANE_WIDTH/2);
+            break;
+        case LaneId::AL3_FREELANE:
+            state.x = CENTER_X - QUEUE_START_OFFSET - (queuePosition * QUEUE_SPACING);
+            state.y = CENTER_Y + LANE_WIDTH + (LANE_WIDTH/2);
+            break;
+
+        // Top side lanes (B)
+        case LaneId::BL1_INCOMING:
+            state.x = CENTER_X - LANE_WIDTH + (LANE_WIDTH/2);
+            state.y = CENTER_Y - QUEUE_START_OFFSET - (queuePosition * QUEUE_SPACING);
+            break;
+        case LaneId::BL2_NORMAL:
+            state.x = CENTER_X + (LANE_WIDTH/2);
+            state.y = CENTER_Y - QUEUE_START_OFFSET - (queuePosition * QUEUE_SPACING);
+            break;
+        case LaneId::BL3_FREELANE:
+            state.x = CENTER_X + LANE_WIDTH + (LANE_WIDTH/2);
+            state.y = CENTER_Y - QUEUE_START_OFFSET - (queuePosition * QUEUE_SPACING);
+            break;
+
+        // Right side lanes (C)
+        case LaneId::CL1_INCOMING:
+            state.x = CENTER_X + QUEUE_START_OFFSET + (queuePosition * QUEUE_SPACING);
+            state.y = CENTER_Y - LANE_WIDTH + (LANE_WIDTH/2);
+            break;
+        case LaneId::CL2_NORMAL:
+            state.x = CENTER_X + QUEUE_START_OFFSET + (queuePosition * QUEUE_SPACING);
+            state.y = CENTER_Y + (LANE_WIDTH/2);
+            break;
+        case LaneId::CL3_FREELANE:
+            state.x = CENTER_X + QUEUE_START_OFFSET + (queuePosition * QUEUE_SPACING);
+            state.y = CENTER_Y + LANE_WIDTH + (LANE_WIDTH/2);
+            break;
+
+        // Bottom side lanes (D)
+        case LaneId::DL1_INCOMING:
+            state.x = CENTER_X - LANE_WIDTH + (LANE_WIDTH/2);
+            state.y = CENTER_Y + QUEUE_START_OFFSET + (queuePosition * QUEUE_SPACING);
+            break;
+        case LaneId::DL2_NORMAL:
+            state.x = CENTER_X + (LANE_WIDTH/2);
+            state.y = CENTER_Y + QUEUE_START_OFFSET + (queuePosition * QUEUE_SPACING);
+            break;
+        case LaneId::DL3_FREELANE:
+            state.x = CENTER_X + LANE_WIDTH + (LANE_WIDTH/2);
+            state.y = CENTER_Y + QUEUE_START_OFFSET + (queuePosition * QUEUE_SPACING);
+            break;
+    }
+
+    // Calculate target position
+    calculateTargetPosition(state, laneId);
+
+    // Debug output
+    std::cout << "Added vehicle " << vehicle->getId()
+              << " to lane " << static_cast<int>(laneId)
+              << " at position (" << state.x << "," << state.y << ")"
+              << " with direction " << static_cast<int>(state.direction)
+              << std::endl;
+
+    activeVehicles[vehicle->getId()] = state;
+}
+
+void TrafficManager::updateVehiclePositions(float deltaTime) {
+    auto it = activeVehicles.begin();
+    while (it != activeVehicles.end()) {
+        auto& state = it->second;
+
+        if (state.isMoving) {
+            float dx = state.targetX - state.x;
+            float dy = state.targetY - state.y;
+            float distance = std::sqrt(dx * dx + dy * dy);
+
+            if (distance < 1.0f) {
+                std::cout << "Vehicle " << it->first << " reached destination" << std::endl;
+                it = activeVehicles.erase(it);
+                continue;
+            }
+
+            // Add gradual speed increase
+            float speedFactor = 1.0f - std::exp(-distance / 200.0f);  // Increased from 100.0f
+            float currentSpeed = state.speed * speedFactor;
+
+            float moveX = (dx / distance) * currentSpeed * deltaTime;
+            float moveY = (dy / distance) * currentSpeed * deltaTime;
+
+            if (!checkCollision(state, state.x + moveX, state.y + moveY)) {
+                state.x += moveX;
+                state.y += moveY;
+            }
+            ++it;
+        } else {
+            updateVehicleQueuePosition(state, state.vehicle->getCurrentLane(),
+                                     getLaneSize(state.vehicle->getCurrentLane()));
+            ++it;
+        }
+    }
+}
+
+
+
+// In TrafficManager.cpp, add this implementation:
+void TrafficManager::updateTrafficLights(float deltaTime) {
+    // Update each traffic light
+    for (auto& [_, light] : trafficLights) {
+        light.update(deltaTime);
+    }
+
+    // Synchronize traffic lights if needed
+    if (!inPriorityMode) {
+        // Normal mode: opposing lights are synchronized
+        if (trafficLights[LaneId::BL2_NORMAL].getState() == LightState::GREEN) {
+            trafficLights[LaneId::DL2_NORMAL].setState(LightState::GREEN);
+            trafficLights[LaneId::AL2_PRIORITY].setState(LightState::RED);
+            trafficLights[LaneId::CL2_NORMAL].setState(LightState::RED);
+        } else {
+            trafficLights[LaneId::AL2_PRIORITY].setState(LightState::GREEN);
+            trafficLights[LaneId::CL2_NORMAL].setState(LightState::GREEN);
+            trafficLights[LaneId::BL2_NORMAL].setState(LightState::RED);
+            trafficLights[LaneId::DL2_NORMAL].setState(LightState::RED);
+        }
+    } else {
+        // Priority mode: priority lane gets green, others red
+        trafficLights[LaneId::AL2_PRIORITY].setState(LightState::GREEN);
+        trafficLights[LaneId::BL2_NORMAL].setState(LightState::RED);
+        trafficLights[LaneId::CL2_NORMAL].setState(LightState::RED);
+        trafficLights[LaneId::DL2_NORMAL].setState(LightState::RED);
+    }
+
+    // Debug output
+    std::cout << "Traffic Light States:" << std::endl;
+    std::cout << "Priority Lane (A2): "
+              << (trafficLights[LaneId::AL2_PRIORITY].getState() == LightState::GREEN ? "GREEN" : "RED")
+              << std::endl;
+    std::cout << "Normal Lane (B2): "
+              << (trafficLights[LaneId::BL2_NORMAL].getState() == LightState::GREEN ? "GREEN" : "RED")
+              << std::endl;
+    std::cout << "Normal Lane (C2): "
+              << (trafficLights[LaneId::CL2_NORMAL].getState() == LightState::GREEN ? "GREEN" : "RED")
+              << std::endl;
+    std::cout << "Normal Lane (D2): "
+              << (trafficLights[LaneId::DL2_NORMAL].getState() == LightState::GREEN ? "GREEN" : "RED")
+              << std::endl;
+}
+
+// Add this function to your TrafficManager.cpp file
+void TrafficManager::updateVehicleQueuePosition(VehicleState &state,
+                                                LaneId laneId,
+                                                size_t queuePosition) {
+  const float QUEUE_SPACING = 40.0f;
+  const float CENTER_X = 400.0f;
+  const float CENTER_Y = 300.0f;
+  const float LANE_WIDTH = 60.0f;
+  const float QUEUE_START_OFFSET = 250.0f;
+
+  // Calculate position based on lane
+  switch (laneId) {
+  // Left lanes (A)
+  case LaneId::AL1_INCOMING:
+  case LaneId::AL2_PRIORITY:
+  case LaneId::AL3_FREELANE: {
+    float laneOffset =
+        static_cast<float>((static_cast<int>(laneId) -
+                            static_cast<int>(LaneId::AL1_INCOMING))) *
+        LANE_WIDTH;
+    state.x = CENTER_X - QUEUE_START_OFFSET -
+              (static_cast<float>(queuePosition) * QUEUE_SPACING);
+    state.y = CENTER_Y - LANE_WIDTH + laneOffset;
+    break;
+  }
+
+  // Top lanes (B)
+  case LaneId::BL1_INCOMING:
+  case LaneId::BL2_NORMAL:
+  case LaneId::BL3_FREELANE: {
+    float laneOffset =
+        static_cast<float>((static_cast<int>(laneId) -
+                            static_cast<int>(LaneId::BL1_INCOMING))) *
+        LANE_WIDTH;
+    state.x = CENTER_X - LANE_WIDTH + laneOffset;
+    state.y = CENTER_Y - QUEUE_START_OFFSET -
+              (static_cast<float>(queuePosition) * QUEUE_SPACING);
+    break;
+  }
+
+  // Right lanes (C)
+  case LaneId::CL1_INCOMING:
+  case LaneId::CL2_NORMAL:
+  case LaneId::CL3_FREELANE: {
+    float laneOffset =
+        static_cast<float>((static_cast<int>(laneId) -
+                            static_cast<int>(LaneId::CL1_INCOMING))) *
+        LANE_WIDTH;
+    state.x = CENTER_X + QUEUE_START_OFFSET +
+              (static_cast<float>(queuePosition) * QUEUE_SPACING);
+    state.y = CENTER_Y - LANE_WIDTH + laneOffset;
+    break;
+  }
+
+  // Bottom lanes (D)
+  case LaneId::DL1_INCOMING:
+  case LaneId::DL2_NORMAL:
+  case LaneId::DL3_FREELANE: {
+    float laneOffset =
+        static_cast<float>((static_cast<int>(laneId) -
+                            static_cast<int>(LaneId::DL1_INCOMING))) *
+        LANE_WIDTH;
+    state.x = CENTER_X - LANE_WIDTH + laneOffset;
+    state.y = CENTER_Y + QUEUE_START_OFFSET +
+              (static_cast<float>(queuePosition) * QUEUE_SPACING);
+    break;
+  }
+  }
+
+  // Calculate target position based on whether vehicle is in free lane
+  if (laneId == LaneId::AL3_FREELANE || laneId == LaneId::BL3_FREELANE ||
+      laneId == LaneId::CL3_FREELANE || laneId == LaneId::DL3_FREELANE) {
+    calculateTargetPosition(state, laneId);
+  }
+}
+
+bool TrafficManager::checkCollision(const VehicleState &state, float newX,
+                                    float newY) const {
+  const float MIN_DISTANCE = 40.0f;
+
+  for (const auto &[otherId, otherState] : activeVehicles) {
+    if (otherId != state.vehicle->getId()) {
+      float dx = newX - otherState.x;
+      float dy = newY - otherState.y;
+      float dist2 = dx * dx + dy * dy;
+      if (dist2 < MIN_DISTANCE * MIN_DISTANCE) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool TrafficManager::canProcessVehicle(LaneId laneId) const {
+  // Check if there's space in the target area
+  const float PROCESS_RADIUS = 100.0f;
+  float targetX = 400.0f, targetY = 300.0f;
+
+  switch (laneId) {
+  case LaneId::AL3_FREELANE:
+    targetX += PROCESS_RADIUS;
+    break;
+  case LaneId::BL3_FREELANE:
+    targetY += PROCESS_RADIUS;
+    break;
+  case LaneId::CL3_FREELANE:
+    targetX -= PROCESS_RADIUS;
+    break;
+  case LaneId::DL3_FREELANE:
+    targetY -= PROCESS_RADIUS;
+    break;
+  default:
+    return false;
+  }
+
+  for (const auto &[_, state] : activeVehicles) {
+    if (state.isMoving) {
+      float dx = state.x - targetX;
+      float dy = state.y - targetY;
+      if (std::sqrt(dx * dx + dy * dy) < PROCESS_RADIUS) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+float TrafficManager::calculateTurningRadius(Direction dir) const {
+  return dir == Direction::LEFT ? 80.0f : 60.0f;
+}
+
+void TrafficManager::calculateTargetPosition(VehicleState &state,
+                                             LaneId laneId) {
+  const float EXIT_DISTANCE = 450.0f;
+  const float CENTER_X = 400.0f;
+  const float CENTER_Y = 300.0f;
+  const float TURN_RADIUS = 100.0f;
+
+  switch (state.direction) {
+  case Direction::STRAIGHT: {
+    switch (laneId) {
+    case LaneId::AL1_INCOMING:
+    case LaneId::AL2_PRIORITY:
+    case LaneId::AL3_FREELANE:
+      state.targetX = CENTER_X + EXIT_DISTANCE;
+      state.targetY = state.y;
+      break;
+    case LaneId::BL1_INCOMING:
+    case LaneId::BL2_NORMAL:
+    case LaneId::BL3_FREELANE:
+      state.targetX = state.x;
+      state.targetY = CENTER_Y + EXIT_DISTANCE;
+      break;
+    case LaneId::CL1_INCOMING:
+    case LaneId::CL2_NORMAL:
+    case LaneId::CL3_FREELANE:
+      state.targetX = CENTER_X - EXIT_DISTANCE;
+      state.targetY = state.y;
+      break;
+    case LaneId::DL1_INCOMING:
+    case LaneId::DL2_NORMAL:
+    case LaneId::DL3_FREELANE:
+      state.targetX = state.x;
+      state.targetY = CENTER_Y - EXIT_DISTANCE;
+      break;
+    }
+    break;
+  }
+  case Direction::LEFT: {
+    switch (laneId) {
+    case LaneId::AL1_INCOMING:
+    case LaneId::AL2_PRIORITY:
+    case LaneId::AL3_FREELANE:
+      state.targetX = state.x + TURN_RADIUS;
+      state.targetY = CENTER_Y - EXIT_DISTANCE;
+      break;
+    case LaneId::BL1_INCOMING:
+    case LaneId::BL2_NORMAL:
+    case LaneId::BL3_FREELANE:
+      state.targetX = CENTER_X - EXIT_DISTANCE;
+      state.targetY = state.y + TURN_RADIUS;
+      break;
+    case LaneId::CL1_INCOMING:
+    case LaneId::CL2_NORMAL:
+    case LaneId::CL3_FREELANE:
+      state.targetX = state.x - TURN_RADIUS;
+      state.targetY = CENTER_Y + EXIT_DISTANCE;
+      break;
+    case LaneId::DL1_INCOMING:
+    case LaneId::DL2_NORMAL:
+    case LaneId::DL3_FREELANE:
+      state.targetX = CENTER_X + EXIT_DISTANCE;
+      state.targetY = state.y - TURN_RADIUS;
+      break;
+    }
+    break;
+  }
+  case Direction::RIGHT: {
+    switch (laneId) {
+    case LaneId::AL1_INCOMING:
+    case LaneId::AL2_PRIORITY:
+    case LaneId::AL3_FREELANE:
+      state.targetX = state.x + TURN_RADIUS;
+      state.targetY = CENTER_Y + EXIT_DISTANCE;
+      break;
+    case LaneId::BL1_INCOMING:
+    case LaneId::BL2_NORMAL:
+    case LaneId::BL3_FREELANE:
+      state.targetX = CENTER_X + EXIT_DISTANCE;
+      state.targetY = state.y + TURN_RADIUS;
+      break;
+    case LaneId::CL1_INCOMING:
+    case LaneId::CL2_NORMAL:
+    case LaneId::CL3_FREELANE:
+      state.targetX = state.x - TURN_RADIUS;
+      state.targetY = CENTER_Y - EXIT_DISTANCE;
+      break;
+    case LaneId::DL1_INCOMING:
+    case LaneId::DL2_NORMAL:
+    case LaneId::DL3_FREELANE:
+      state.targetX = CENTER_X - EXIT_DISTANCE;
+      state.targetY = state.y - TURN_RADIUS;
+      break;
+    }
+    break;
+  }
+  }
+}
+
+bool TrafficManager::checkPriorityConditions() const {
+  auto priorityLane =
+      std::find_if(lanes.begin(), lanes.end(), [](const auto &lane) {
+        return lane->isPriorityLane() && lane->getQueueSize() > 10;
+      });
+  return priorityLane != lanes.end();
+}
+
+void TrafficManager::processPriorityLane() {
+  for (auto &lane : lanes) {
+    if (lane->isPriorityLane() && lane->getQueueSize() > 5) {
+      while (lane->getQueueSize() > 5) {
+        auto vehicle = lane->removeVehicle();
+        if (vehicle) {
+          auto it = activeVehicles.find(vehicle->getId());
+          if (it != activeVehicles.end()) {
+            it->second.isMoving = true;
+          }
+        }
+      }
+      break;
+    }
+  }
+}
+
+void TrafficManager::processNormalLanes(size_t vehicleCount) {
+  if (vehicleCount == 0)
+    return;
+
+  for (auto &lane : lanes) {
+    if (!lane->isPriorityLane() && lane->getId() != LaneId::AL3_FREELANE &&
+        lane->getId() != LaneId::BL3_FREELANE &&
+        lane->getId() != LaneId::CL3_FREELANE &&
+        lane->getId() != LaneId::DL3_FREELANE) {
+
+      for (size_t i = 0; i < vehicleCount && lane->getQueueSize() > 0; ++i) {
+        auto vehicle = lane->removeVehicle();
+        if (vehicle) {
+          auto it = activeVehicles.find(vehicle->getId());
+          if (it != activeVehicles.end()) {
+            it->second.isMoving = true;
+          }
+        }
+      }
+    }
+  }
+}
+
+size_t TrafficManager::calculateVehiclesToProcess() const {
+  size_t totalVehicles = 0;
+  size_t normalLaneCount = 0;
+
+  for (const auto &lane : lanes) {
+    if (!lane->isPriorityLane() && lane->getId() != LaneId::AL3_FREELANE &&
+        lane->getId() != LaneId::BL3_FREELANE &&
+        lane->getId() != LaneId::CL3_FREELANE &&
+        lane->getId() != LaneId::DL3_FREELANE) {
+      totalVehicles += lane->getQueueSize();
+      normalLaneCount++;
+    }
+  }
+
+  if (normalLaneCount == 0)
+    return 0;
+
+  float avgVehicles =
+      static_cast<float>(totalVehicles) / static_cast<float>(normalLaneCount);
+  return static_cast<size_t>(
+      std::ceil(avgVehicles * 0.3f)); // Process 30% of average
 }
 
 size_t TrafficManager::getLaneSize(LaneId laneId) const {
-    auto it = std::find_if(lanes.begin(), lanes.end(),
-                          [laneId](const auto& lane) { return lane->getId() == laneId; });
-    if (it != lanes.end()) {
-        return (*it)->getQueueSize();
-    }
-    return 0;
-}
-
-
-// Add this implementation to src/managers/TrafficManager.cpp
-
-void TrafficManager::addNewVehicleToState(std::shared_ptr<Vehicle> vehicle, LaneId laneId) {
-    VehicleState state;
-    state.vehicle = vehicle;
-    state.speed = 100.0f;
-    state.isMoving = true;
-    state.direction = vehicle->getDirection();
-
-    const int LANE_OFFSET = 60;
-    const int CENTER_X = 400;
-    const int CENTER_Y = 300;
-
-    switch (laneId) {
-        // Left lanes (A)
-        case LaneId::AL1_INCOMING:
-        case LaneId::AL2_PRIORITY:
-        case LaneId::AL3_FREELANE: {
-            int laneIndex = static_cast<int>(laneId) - static_cast<int>(LaneId::AL1_INCOMING);
-            state.x = -30.0f;
-            state.y = static_cast<float>(CENTER_Y + (laneIndex * LANE_OFFSET) - LANE_OFFSET);
-
-            if (state.direction == Direction::STRAIGHT) {
-                state.targetX = 830.0f;
-                state.targetY = state.y;
-            } else if (state.direction == Direction::RIGHT) {
-                state.targetX = static_cast<float>(static_cast<int>(state.y) + CENTER_X);
-                state.targetY = 830.0f;
-            } else if (state.direction == Direction::LEFT) {
-                state.targetX = state.y - CENTER_Y + CENTER_X;
-                state.targetY = -30.0f;
-            }
-            break;
-        }
-
-        // Top lanes (B)
-        case LaneId::BL1_INCOMING:
-        case LaneId::BL2_NORMAL:
-        case LaneId::BL3_FREELANE: {
-            int laneIndex = static_cast<int>(laneId) - static_cast<int>(LaneId::BL1_INCOMING);
-            state.x = static_cast<float>(CENTER_X + (laneIndex * LANE_OFFSET) - LANE_OFFSET);
-            state.y = -30.0f;
-
-            if (state.direction == Direction::STRAIGHT) {
-                state.targetX = state.x;
-                state.targetY = 830.0f;
-            } else if (state.direction == Direction::RIGHT) {
-                state.targetX = 830.0f;
-                state.targetY = state.x - CENTER_X + CENTER_Y;
-            } else if (state.direction == Direction::LEFT) {
-                state.targetX = -30.0f;
-                state.targetY = CENTER_Y - (state.x - CENTER_X);
-            }
-            break;
-        }
-
-        // Right lanes (C)
-        case LaneId::CL1_INCOMING:
-        case LaneId::CL2_NORMAL:
-        case LaneId::CL3_FREELANE: {
-            int laneIndex = static_cast<int>(laneId) - static_cast<int>(LaneId::CL1_INCOMING);
-            state.x = 830.0f;
-            state.y = static_cast<float>(CENTER_Y + (laneIndex * LANE_OFFSET) - LANE_OFFSET);
-
-            if (state.direction == Direction::STRAIGHT) {
-                state.targetX = -30.0f;
-                state.targetY = state.y;
-            } else if (state.direction == Direction::RIGHT) {
-                state.targetX = static_cast<float>(CENTER_Y - (state.y - CENTER_Y));
-                state.targetY = -30.0f;
-            } else if (state.direction == Direction::LEFT) {
-                state.targetX = CENTER_X - (state.y - CENTER_Y);
-                state.targetY = 830.0f;
-            }
-            break;
-        }
-
-        // Bottom lanes (D)
-        case LaneId::DL1_INCOMING:
-        case LaneId::DL2_NORMAL:
-        case LaneId::DL3_FREELANE: {
-            int laneIndex = static_cast<int>(laneId) - static_cast<int>(LaneId::DL1_INCOMING);
-            state.x = static_cast<float>(CENTER_X + (laneIndex * LANE_OFFSET) - LANE_OFFSET);
-            state.y = 830.0f;
-
-            if (state.direction == Direction::STRAIGHT) {
-                state.targetX = state.x;
-                state.targetY = -30.0f;
-            } else if (state.direction == Direction::RIGHT) {
-                state.targetX = -30.0f;
-                state.targetY = CENTER_Y + (state.x - CENTER_X);
-            } else if (state.direction == Direction::LEFT) {
-                state.targetX = 830.0f;
-                state.targetY = CENTER_Y - (state.x - CENTER_X);
-            }
-            break;
-        }
-
-        default:
-            state.x = -30.0f;
-            state.y = static_cast<float>(CENTER_Y);
-            state.targetX = 830.0f;
-            state.targetY = static_cast<float>(CENTER_Y);
-    }
-
-    activeVehicles[vehicle->getId()] = state;
+  auto it =
+      std::find_if(lanes.begin(), lanes.end(), [laneId](const auto &lane) {
+        return lane->getId() == laneId;
+      });
+  if (it != lanes.end()) {
+    return (*it)->getQueueSize();
+  }
+  return 0;
 }
 
 
@@ -1347,6 +2127,7 @@ File: src\visualization\Renderer.cpp
 
 #include "visualization/Renderer.h"
 #include <iostream>
+#include <cmath>
 
 Renderer::Renderer() : window(nullptr), renderer(nullptr) {}
 
@@ -1360,13 +2141,7 @@ bool Renderer::initialize() {
         return false;
     }
 
-    window = SDL_CreateWindow(
-        "Traffic Simulator",
-        WINDOW_WIDTH,
-        WINDOW_HEIGHT,
-        SDL_WINDOW_RESIZABLE
-    );
-
+    window = SDL_CreateWindow("Traffic Simulator", WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_RESIZABLE);
     if (!window) {
         std::cerr << "Window creation failed: " << SDL_GetError() << std::endl;
         return false;
@@ -1378,66 +2153,303 @@ bool Renderer::initialize() {
         return false;
     }
 
+    std::cout << "Renderer initialized successfully" << std::endl;
     return true;
 }
 
-void Renderer::renderRoads() {
-    // Background
-    SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255);
+void Renderer::render(const TrafficManager& trafficManager) {
+    // Clear the screen
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
 
-    // Main roads
-    SDL_SetRenderDrawColor(renderer, 60, 60, 60, 255);
+    std::cout << "\n=== Renderer Update ===" << std::endl;
+
+    renderBackground();
+    renderRoads();
+    renderLanes();
+    renderIntersection();
+    renderCrosswalks();
+    renderStopLines();
+    renderArrows();
+    renderTrafficLights(trafficManager.getTrafficLights());
+
+    // Debug vehicle rendering
+    const auto& vehicles = trafficManager.getActiveVehicles();
+    std::cout << "Rendering " << vehicles.size() << " vehicles" << std::endl;
+
+    for (const auto& [vehicleId, state] : vehicles) {
+        std::cout << "Rendering vehicle " << vehicleId
+                 << " at (" << state.x << "," << state.y << ")"
+                 << " Moving: " << (state.isMoving ? "Yes" : "No") << std::endl;
+
+        float angle = atan2f(state.targetY - state.y, state.targetX - state.x);
+        renderVehicle(
+            state.x,
+            state.y,
+            state.direction,
+            state.vehicle->getCurrentLane() == LaneId::AL2_PRIORITY,
+            angle,
+            state.isMoving
+        );
+    }
+
+    renderPriorityIndicator(trafficManager.isInPriorityMode());
+    debugOverlay.render(renderer, trafficManager);
+
+    SDL_RenderPresent(renderer);
+}
+
+void Renderer::renderBackground() {
+    // Draw sky gradient
+    for (int y = 0; y < WINDOW_HEIGHT; ++y) {
+        float t = static_cast<float>(y) / WINDOW_HEIGHT;
+        uint8_t skyR = static_cast<uint8_t>(135 * (1 - t) + 30 * t);
+        uint8_t skyG = static_cast<uint8_t>(206 * (1 - t) + 30 * t);
+        uint8_t skyB = static_cast<uint8_t>(235 * (1 - t) + 30 * t);
+        SDL_SetRenderDrawColor(renderer, skyR, skyG, skyB, 255);
+        SDL_RenderLine(renderer, 0, y, WINDOW_WIDTH, y);
+    }
+
+    // Draw grass texture
+    for (int y = 0; y < WINDOW_HEIGHT; y += 20) {
+        for (int x = 0; x < WINDOW_WIDTH; x += 20) {
+            SDL_SetRenderDrawColor(renderer, 34 + (rand() % 20), 139 + (rand() % 20),
+                                 34 + (rand() % 20), 255);
+            SDL_FRect grassPatch = {static_cast<float>(x), static_cast<float>(y),
+                                  20.0f, 20.0f};
+            SDL_RenderFillRect(renderer, &grassPatch);
+        }
+    }
+}
+
+void Renderer::renderRoads() {
+    // Main road background
+    SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
 
     // Horizontal road
     SDL_FRect horizontalRoad = {
-        static_cast<float>(CENTER_X - 350),
-        static_cast<float>(CENTER_Y - ROAD_WIDTH/2),
-        700.0f,
+        static_cast<float>(CENTER_X - 450),
+        static_cast<float>(CENTER_Y - ROAD_WIDTH / 2),
+        900.0f,
         static_cast<float>(ROAD_WIDTH)
     };
     SDL_RenderFillRect(renderer, &horizontalRoad);
 
     // Vertical road
     SDL_FRect verticalRoad = {
-        static_cast<float>(CENTER_X - ROAD_WIDTH/2),
-        static_cast<float>(CENTER_Y - 350),
+        static_cast<float>(CENTER_X - ROAD_WIDTH / 2),
+        static_cast<float>(CENTER_Y - 450),
         static_cast<float>(ROAD_WIDTH),
-        700.0f
+        900.0f
     };
     SDL_RenderFillRect(renderer, &verticalRoad);
 
-    // Draw lane markers
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    // Draw curbs
+    SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+    const float CURB_WIDTH = 3.0f;
 
-    // Horizontal lanes
-    for (int i = -1; i <= 1; i++) {
-        float y = static_cast<float>(CENTER_Y + i * LANE_WIDTH);
-        for (float x = CENTER_X - 300.0f; x <= CENTER_X + 300.0f; x += 40.0f) {
-            if (x < CENTER_X - ROAD_WIDTH/2 || x > CENTER_X + ROAD_WIDTH/2) {
-                SDL_FRect dash = {x, y - 1.5f, 20.0f, 3.0f};
-                SDL_RenderFillRect(renderer, &dash);
-            }
-        }
+    // Horizontal curbs
+    SDL_FRect hCurbTop = {horizontalRoad.x, horizontalRoad.y, horizontalRoad.w, CURB_WIDTH};
+    SDL_FRect hCurbBottom = {horizontalRoad.x, horizontalRoad.y + horizontalRoad.h - CURB_WIDTH,
+                            horizontalRoad.w, CURB_WIDTH};
+    SDL_RenderFillRect(renderer, &hCurbTop);
+    SDL_RenderFillRect(renderer, &hCurbBottom);
+
+    // Vertical curbs
+    SDL_FRect vCurbLeft = {verticalRoad.x, verticalRoad.y, CURB_WIDTH, verticalRoad.h};
+    SDL_FRect vCurbRight = {verticalRoad.x + verticalRoad.w - CURB_WIDTH,
+                           verticalRoad.y, CURB_WIDTH, verticalRoad.h};
+    SDL_RenderFillRect(renderer, &vCurbLeft);
+    SDL_RenderFillRect(renderer, &vCurbRight);
+}
+
+
+// In Renderer.cpp, update renderLanes:
+void Renderer::renderLanes() {
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    const float DASH_LENGTH = 30.0f;
+    const float GAP_LENGTH = 20.0f;
+
+    // Draw lane markers for 3 lanes per direction
+    for (int i = 1; i < 3; i++) {  // Draw 2 lines to create 3 lanes
+        // Horizontal lanes
+        float y = CENTER_Y - ROAD_WIDTH/2 + i * LANE_WIDTH;
+        drawDashedLine(CENTER_X - 450, y, CENTER_X + 450, y, DASH_LENGTH, GAP_LENGTH);
+
+        // Vertical lanes
+        float x = CENTER_X - ROAD_WIDTH/2 + i * LANE_WIDTH;
+        drawDashedLine(x, CENTER_Y - 450, x, CENTER_Y + 450, DASH_LENGTH, GAP_LENGTH);
     }
 
-    // Vertical lanes
-    for (int i = -1; i <= 1; i++) {
-        float x = static_cast<float>(CENTER_X + i * LANE_WIDTH);
-        for (float y = CENTER_Y - 300.0f; y <= CENTER_Y + 300.0f; y += 40.0f) {
-            if (y < CENTER_Y - ROAD_WIDTH/2 || y > CENTER_Y + ROAD_WIDTH/2) {
-                SDL_FRect dash = {x - 1.5f, y, 3.0f, 20.0f};
-                SDL_RenderFillRect(renderer, &dash);
-            }
+    // Draw yellow center lines
+    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+    SDL_RenderLine(renderer,
+        CENTER_X - 450, CENTER_Y,
+        CENTER_X + 450, CENTER_Y);
+    SDL_RenderLine(renderer,
+        CENTER_X, CENTER_Y - 450,
+        CENTER_X, CENTER_Y + 450);
+}void Renderer::renderIntersection() {
+    // Draw intersection box
+    SDL_SetRenderDrawColor(renderer, 45, 45, 45, 255);
+    SDL_FRect intersection = {
+        static_cast<float>(CENTER_X - ROAD_WIDTH / 2),
+        static_cast<float>(CENTER_Y - ROAD_WIDTH / 2),
+        static_cast<float>(ROAD_WIDTH),
+        static_cast<float>(ROAD_WIDTH)
+    };
+    SDL_RenderFillRect(renderer, &intersection);
+
+    // Draw intersection guide lines
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 100);
+    drawDashedLine(CENTER_X - ROAD_WIDTH / 2, CENTER_Y,
+                  CENTER_X + ROAD_WIDTH / 2, CENTER_Y, 10.0f, 10.0f);
+    drawDashedLine(CENTER_X, CENTER_Y - ROAD_WIDTH / 2,
+                  CENTER_X, CENTER_Y + ROAD_WIDTH / 2, 10.0f, 10.0f);
+}
+
+void Renderer::renderCrosswalks() {
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    const float STRIPE_WIDTH = 5.0f;
+    const float STRIPE_LENGTH = 30.0f;
+    const float STRIPE_GAP = 5.0f;
+    const float CROSSWALK_WIDTH = 20.0f;
+
+    // Render crosswalks on all four sides
+    for (int i = 0; i < 4; ++i) {
+        float angle = i * 90.0f * M_PI / 180.0f;
+        float baseX = CENTER_X + cos(angle) * (ROAD_WIDTH / 2 - CROSSWALK_WIDTH);
+        float baseY = CENTER_Y + sin(angle) * (ROAD_WIDTH / 2 - CROSSWALK_WIDTH);
+
+        for (float offset = 0; offset < ROAD_WIDTH; offset += STRIPE_WIDTH + STRIPE_GAP) {
+            SDL_FPoint p1 = rotatePoint(baseX, baseY + offset, CENTER_X, CENTER_Y, angle);
+            SDL_FPoint p2 = rotatePoint(baseX + STRIPE_LENGTH, baseY + offset,
+                                      CENTER_X, CENTER_Y, angle);
+
+            SDL_FRect stripe = {p1.x, p1.y, STRIPE_WIDTH, p2.y - p1.y};
+            SDL_RenderFillRect(renderer, &stripe);
         }
     }
 }
 
-void Renderer::renderVehicle(float x, float y, Direction dir, bool isPriority, float angle) {
+void Renderer::renderStopLines() {
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    const float STOP_LINE_WIDTH = 8.0f;
+    const float OFFSET = ROAD_WIDTH / 2 - 20.0f;
+
+    // Draw stop lines at each intersection entry
+    SDL_FRect stopLines[] = {
+        // Left approach
+        {static_cast<float>(CENTER_X - OFFSET - STOP_LINE_WIDTH),
+         static_cast<float>(CENTER_Y - LANE_WIDTH),
+         STOP_LINE_WIDTH, LANE_WIDTH * 2},
+
+        // Top approach
+        {static_cast<float>(CENTER_X - LANE_WIDTH),
+         static_cast<float>(CENTER_Y - OFFSET - STOP_LINE_WIDTH),
+         LANE_WIDTH * 2, STOP_LINE_WIDTH},
+
+        // Right approach
+        {static_cast<float>(CENTER_X + OFFSET),
+         static_cast<float>(CENTER_Y - LANE_WIDTH),
+         STOP_LINE_WIDTH, LANE_WIDTH * 2},
+
+        // Bottom approach
+        {static_cast<float>(CENTER_X - LANE_WIDTH),
+         static_cast<float>(CENTER_Y + OFFSET),
+         LANE_WIDTH * 2, STOP_LINE_WIDTH}
+    };
+
+    for (const auto& line : stopLines) {
+        SDL_RenderFillRect(renderer, &line);
+    }
+}
+
+void Renderer::renderArrows() {
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 128);
+    const float ARROW_DISTANCE = 150.0f;
+
+    // Draw direction arrows in each lane
+    for (int lane = -1; lane <= 1; lane++) {
+        float laneOffset = static_cast<float>(lane * LANE_WIDTH);
+
+        // Left approach
+        drawArrow(CENTER_X - ARROW_DISTANCE, CENTER_Y + laneOffset,
+                 0.0f, Direction::STRAIGHT);
+
+        // Top approach
+        drawArrow(CENTER_X + laneOffset, CENTER_Y - ARROW_DISTANCE,
+                 static_cast<float>(M_PI / 2), Direction::STRAIGHT);
+
+        // Right approach
+        drawArrow(CENTER_X + ARROW_DISTANCE, CENTER_Y + laneOffset,
+                 static_cast<float>(M_PI), Direction::STRAIGHT);
+
+        // Bottom approach
+        drawArrow(CENTER_X + laneOffset, CENTER_Y + ARROW_DISTANCE,
+                 static_cast<float>(-M_PI / 2), Direction::STRAIGHT);
+    }
+}
+
+void Renderer::drawArrow(float x, float y, float angle, Direction dir) {
+    const float ARROW_LENGTH = 30.0f;
+    const float HEAD_SIZE = 10.0f;
+    const float HEAD_ANGLE = static_cast<float>(M_PI / 6.0);
+
+    float cosA = cosf(angle);
+    float sinA = sinf(angle);
+
+    // Arrow shaft
+    float endX = x + ARROW_LENGTH * cosA;
+    float endY = y + ARROW_LENGTH * sinA;
+    SDL_RenderLine(renderer, x, y, endX, endY);
+
+    // Arrow head
+    float leftX = endX - HEAD_SIZE * cosf(angle + HEAD_ANGLE);
+    float leftY = endY - HEAD_SIZE * sinf(angle + HEAD_ANGLE);
+    float rightX = endX - HEAD_SIZE * cosf(angle - HEAD_ANGLE);
+    float rightY = endY - HEAD_SIZE * sinf(angle - HEAD_ANGLE);
+
+    SDL_RenderLine(renderer, endX, endY, leftX, leftY);
+    SDL_RenderLine(renderer, endX, endY, rightX, rightY);
+}
+
+void Renderer::renderTrafficLights(const std::map<LaneId, TrafficLight>& lights) {
+    for (const auto& [laneId, light] : lights) {
+        // Position lights based on lane
+        float x = 0.0f, y = 0.0f;
+
+        switch (laneId) {
+            case LaneId::AL2_PRIORITY:
+                x = static_cast<float>(CENTER_X - ROAD_WIDTH / 2 - 50);
+                y = static_cast<float>(CENTER_Y - LANE_WIDTH);
+                break;
+            case LaneId::BL2_NORMAL:
+                x = static_cast<float>(CENTER_X - LANE_WIDTH);
+                y = static_cast<float>(CENTER_Y - ROAD_WIDTH / 2 - 50);
+                break;
+            case LaneId::CL2_NORMAL:
+                x = static_cast<float>(CENTER_X + ROAD_WIDTH / 2 + 10);
+                y = static_cast<float>(CENTER_Y - LANE_WIDTH);
+                break;
+            case LaneId::DL2_NORMAL:
+                x = static_cast<float>(CENTER_X - LANE_WIDTH);
+                y = static_cast<float>(CENTER_Y + ROAD_WIDTH / 2 + 10);
+                break;
+            default:
+                continue;
+        }
+
+        light.render(renderer, x, y);
+    }
+}
+
+void Renderer::renderVehicle(float x, float y, Direction dir, bool isPriority,
+                           float angle, bool isMoving) {
     const float halfWidth = VEHICLE_WIDTH / 2.0f;
     const float halfHeight = VEHICLE_HEIGHT / 2.0f;
 
-    float cosAngle = cosf(angle);
+float cosAngle = cosf(angle);
     float sinAngle = sinf(angle);
 
     // Vehicle corners
@@ -1452,139 +2464,161 @@ void Renderer::renderVehicle(float x, float y, Direction dir, bool isPriority, f
          y + (-halfWidth * sinAngle - halfHeight * cosAngle)}
     };
 
-    // Draw vehicle body
-    if (isPriority) {
-        SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
-    } else {
-        SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255);
+    // Draw shadow
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 100);
+    for (int i = 0; i < 4; i++) {
+        SDL_RenderLine(renderer, vertices[i].x + 2, vertices[i].y + 2,
+                     vertices[(i + 1) % 4].x + 2, vertices[(i + 1) % 4].y + 2);
     }
 
-    // Draw outline
+    // Draw vehicle body
+    if (isPriority) {
+        SDL_SetRenderDrawColor(renderer, 255, 69, 0, 255); // Priority vehicles are orange
+    } else {
+        SDL_SetRenderDrawColor(renderer, 65, 105, 225, 255); // Normal vehicles are blue
+    }
+
     for (int i = 0; i < 4; i++) {
-        SDL_RenderLine(renderer,
-            vertices[i].x, vertices[i].y,
-            vertices[(i + 1) % 4].x, vertices[(i + 1) % 4].y);
+        SDL_RenderLine(renderer, vertices[i].x, vertices[i].y,
+                     vertices[(i + 1) % 4].x, vertices[(i + 1) % 4].y);
     }
 
     // Draw direction indicator
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    const float arrowLength = VEHICLE_WIDTH * 0.4f;
-    float arrowAngle = angle;
-
-    switch (dir) {
-        case Direction::LEFT:
-            arrowAngle -= 0.785f; // 45 degrees in radians
-            break;
-        case Direction::RIGHT:
-            arrowAngle += 0.785f;
-            break;
-        default:
-            break;
-    }
-
-    float endX = x + arrowLength * cosf(arrowAngle);
-    float endY = y + arrowLength * sinf(arrowAngle);
+    float arrowLength = VEHICLE_WIDTH * 0.4f;
+    float endX = x + arrowLength * cosf(angle);
+    float endY = y + arrowLength * sinf(angle);
     SDL_RenderLine(renderer, x, y, endX, endY);
-}
 
-float Renderer::calculateVehicleAngle(LaneId laneId) const {
-    switch (laneId) {
-        case LaneId::AL1_INCOMING:
-        case LaneId::AL2_PRIORITY:
-        case LaneId::AL3_FREELANE:
-            return 0.0f;
+    // Movement indicator
+    if (isMoving) {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 128);
+        float speed = 2.0f;
+        float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+        float offset = (sinf(t * speed) + 1.0f) * 5.0f;
 
-        case LaneId::BL1_INCOMING:
-        case LaneId::BL2_NORMAL:
-        case LaneId::BL3_FREELANE:
-            return 1.5708f; // π/2
-
-        case LaneId::CL1_INCOMING:
-        case LaneId::CL2_NORMAL:
-        case LaneId::CL3_FREELANE:
-            return 3.1416f; // π
-
-        case LaneId::DL1_INCOMING:
-        case LaneId::DL2_NORMAL:
-        case LaneId::DL3_FREELANE:
-            return -1.5708f; // -π/2
-
-        default:
-            return 0.0f;
-    }
-}
-
-void Renderer::renderVehicles(const std::vector<std::unique_ptr<Lane>>& lanes) {
-    for (const auto& lane : lanes) {
-        size_t queueSize = lane->getQueueSize();
-        if (queueSize == 0) continue;
-
-        LaneId laneId = lane->getId();
-        float spacing = VEHICLE_WIDTH * 1.5f;
-        float baseAngle = calculateVehicleAngle(laneId);
-
-        for (size_t i = 0; i < queueSize; i++) {
-            float x = 0.0f, y = 0.0f;
-            Direction dir = Direction::STRAIGHT; // Get actual direction from vehicle
-
-            // Calculate position based on lane
-            if (laneId <= LaneId::AL3_FREELANE) { // Left lanes
-                x = static_cast<float>(CENTER_X - 300 + (i * spacing));
-                y = static_cast<float>(CENTER_Y + ((static_cast<int>(laneId) % 3) - 1) * LANE_WIDTH);
-            }
-            else if (laneId <= LaneId::BL3_FREELANE) { // Top lanes
-                x = static_cast<float>(CENTER_X + ((static_cast<int>(laneId) % 3) - 1) * LANE_WIDTH);
-                y = static_cast<float>(CENTER_Y - 300 + (i * spacing));
-            }
-            else if (laneId <= LaneId::CL3_FREELANE) { // Right lanes
-                x = static_cast<float>(CENTER_X + 300 - (i * spacing));
-                y = static_cast<float>(CENTER_Y + ((static_cast<int>(laneId) % 3) - 1) * LANE_WIDTH);
-            }
-            else { // Bottom lanes
-                x = static_cast<float>(CENTER_X + ((static_cast<int>(laneId) % 3) - 1) * LANE_WIDTH);
-                y = static_cast<float>(CENTER_Y + 300 - (i * spacing));
-            }
-
-            renderVehicle(x, y, dir, laneId == LaneId::AL2_PRIORITY, baseAngle);
+        for (int i = 0; i < 3; i++) {
+            float tailX = x - (i + 1) * offset * cosf(angle);
+            float tailY = y - (i + 1) * offset * sinf(angle);
+            SDL_RenderPoint(renderer, tailX, tailY);
         }
     }
 }
 
-void Renderer::renderTrafficLights(const std::map<LaneId, TrafficLight>& lights) {
-    for (const auto& [laneId, light] : lights) {
-        float x = 0.0f, y = 0.0f;
+void Renderer::renderPriorityIndicator(bool isInPriorityMode) {
+    if (isInPriorityMode) {
+        const float INDICATOR_SIZE = 20.0f;
+        SDL_SetRenderDrawColor(renderer, 255, 69, 0, 255);
+        SDL_FRect indicator = {10.0f, 10.0f, INDICATOR_SIZE, INDICATOR_SIZE};
+        SDL_RenderFillRect(renderer, &indicator);
 
-        switch (laneId) {
-            case LaneId::AL2_PRIORITY:
-                x = static_cast<float>(CENTER_X - ROAD_WIDTH/2 - 40);
-                y = static_cast<float>(CENTER_Y - LANE_WIDTH);
-                break;
-            case LaneId::BL2_NORMAL:
-                x = static_cast<float>(CENTER_X - LANE_WIDTH);
-                y = static_cast<float>(CENTER_Y - ROAD_WIDTH/2 - 40);
-                break;
-            case LaneId::CL2_NORMAL:
-                x = static_cast<float>(CENTER_X + ROAD_WIDTH/2 + 20);
-                y = static_cast<float>(CENTER_Y - LANE_WIDTH);
-                break;
-            case LaneId::DL2_NORMAL:
-                x = static_cast<float>(CENTER_X - LANE_WIDTH);
-                y = static_cast<float>(CENTER_Y + ROAD_WIDTH/2 + 20);
-                break;
-            default:
-                continue;
-        }
-
-        light.render(renderer, x, y);
+        // Add a pulsing effect
+        float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+        uint8_t alpha = static_cast<uint8_t>(128 + 127 * sinf(t * 2.0f));
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, alpha);
+        SDL_RenderRect(renderer, &indicator);
     }
 }
 
-void Renderer::render(const TrafficManager& trafficManager) {
-    renderRoads();
-    renderTrafficLights(trafficManager.getTrafficLights());
-    renderVehicles(trafficManager.getLanes());
-    debugOverlay.render(renderer, trafficManager);
-    SDL_RenderPresent(renderer);
+void Renderer::renderLaneIdentifiers() {
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    const float OFFSET = ROAD_WIDTH / 2 + 30.0f;
+
+    // Define lane labels
+    struct LaneLabel {
+        float x, y;
+        const char* text;
+    };
+
+    LaneLabel labels[] = {
+        {CENTER_X - OFFSET, CENTER_Y - LANE_WIDTH, "AL1"},
+        {CENTER_X - OFFSET, CENTER_Y, "AL2"},
+        {CENTER_X - OFFSET, CENTER_Y + LANE_WIDTH, "AL3"},
+        // Add other lane labels as needed
+    };
+
+    // Render labels (Note: Text rendering requires additional setup with SDL_ttf)
+}
+
+void Renderer::renderVehicleCount(const TrafficManager& trafficManager) {
+    // Render vehicle count display in top-left corner
+    const float PADDING = 10.0f;
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200);
+    SDL_FRect countBox = {PADDING, PADDING, 150.0f, 80.0f};
+    SDL_RenderFillRect(renderer, &countBox);
+
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    // Count display would go here - requires text rendering setup
+}
+
+void Renderer::drawDashedLine(float x1, float y1, float x2, float y2,
+                            float dashLength, float gapLength) {
+    float dx = x2 - x1;
+    float dy = y2 - y1;
+    float distance = sqrt(dx * dx + dy * dy);
+    float dashX = dx * dashLength / distance;
+    float dashY = dy * dashLength / distance;
+    float gapX = dx * gapLength / distance;
+    float gapY = dy * gapLength / distance;
+
+    float currentX = x1;
+    float currentY = y1;
+
+    while (distance > 0) {
+        float nextX = currentX + dashX;
+        float nextY = currentY + dashY;
+        SDL_RenderLine(renderer, currentX, currentY, nextX, nextY);
+
+        currentX = nextX + gapX;
+        currentY = nextY + gapY;
+        distance -= (dashLength + gapLength);
+    }
+}
+
+SDL_FPoint Renderer::rotatePoint(float x, float y, float cx, float cy, float angle) {
+    float s = sin(angle);
+    float c = cos(angle);
+
+    // Translate point back to origin
+    x -= cx;
+    y -= cy;
+
+    // Rotate point
+    float xnew = x * c - y * s;
+    float ynew = x * s + y * c;
+
+    // Translate point back
+    x = xnew + cx;
+    y = ynew + cy;
+
+    return {x, y};
+}
+
+void Renderer::renderRoundedRect(float x, float y, float w, float h, float radius) {
+    const int segments = 8;
+
+    // Draw the corners
+    for (int corner = 0; corner < 4; corner++) {
+        float centerX = (corner & 1) ? x + w - radius : x + radius;
+        float centerY = (corner & 2) ? y + h - radius : y + radius;
+
+        for (int i = 0; i <= segments; i++) {
+            float angle1 = (corner * 90 + i * 90.0f / segments) * M_PI / 180.0f;
+            float angle2 = (corner * 90 + (i + 1) * 90.0f / segments) * M_PI / 180.0f;
+
+            SDL_RenderLine(renderer,
+                         centerX + radius * cosf(angle1),
+                         centerY + radius * sinf(angle1),
+                         centerX + radius * cosf(angle2),
+                         centerY + radius * sinf(angle2));
+        }
+    }
+
+    // Draw the straight edges
+    SDL_RenderLine(renderer, x + radius, y, x + w - radius, y);
+    SDL_RenderLine(renderer, x + radius, y + h, x + w - radius, y + h);
+    SDL_RenderLine(renderer, x, y + radius, x, y + h - radius);
+    SDL_RenderLine(renderer, x + w, y + radius, x + w, y + h - radius);
 }
 
 void Renderer::cleanup() {
@@ -1598,4 +2632,6 @@ void Renderer::cleanup() {
     }
     SDL_Quit();
 }
+
+
 

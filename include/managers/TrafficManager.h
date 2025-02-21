@@ -1,4 +1,4 @@
-// include/managers/TrafficManager.h
+// TrafficManager.h
 #pragma once
 #include <vector>
 #include <memory>
@@ -7,7 +7,6 @@
 #include "core/Lane.h"
 #include "core/TrafficLight.h"
 #include "core/Vehicle.h"
-#include "managers/FileHandler.h"
 
 struct VehicleState {
     std::shared_ptr<Vehicle> vehicle;
@@ -19,6 +18,8 @@ struct VehicleState {
     bool hasStartedTurn;
     float turnProgress;
     float waitTime;
+    float turnAngle;        // Current turning angle
+    float targetAngle;      // Final angle after turn
 };
 
 class TrafficManager {
@@ -29,21 +30,21 @@ private:
     bool inPriorityMode;
     float stateTimer;
     float lastUpdateTime;
-    float vehicleProcessInterval;
 
-    // Helper methods
+    // Vehicle processing methods
     void updateVehiclePositions(float deltaTime);
     void updateVehicleQueuePosition(VehicleState& state, LaneId laneId, size_t queuePosition);
     void calculateTargetPosition(VehicleState& state, LaneId laneId);
+    bool checkCollision(const VehicleState& state, float newX, float newY) const;
+    float calculateTurningRadius(Direction dir) const;
+
+    // Traffic control methods
     void updateTrafficLights(float deltaTime);
     void synchronizeTrafficLights();
     bool checkPriorityConditions() const;
     void processPriorityLane();
     void processNormalLanes(size_t vehicleCount);
     size_t calculateVehiclesToProcess() const;
-    bool canProcessVehicle(LaneId laneId) const;
-    float calculateTurningRadius(Direction dir) const;
-    bool checkCollision(const VehicleState& state, float newX, float newY) const;
 
 public:
     TrafficManager();
@@ -51,6 +52,8 @@ public:
     void addVehicleToLane(LaneId laneId, std::shared_ptr<Vehicle> vehicle);
     void addNewVehicleToState(std::shared_ptr<Vehicle> vehicle, LaneId laneId);
     size_t getLaneSize(LaneId laneId) const;
+
+    // Getters for rendering
     bool isInPriorityMode() const { return inPriorityMode; }
     const std::vector<std::unique_ptr<Lane>>& getLanes() const { return lanes; }
     const std::map<LaneId, TrafficLight>& getTrafficLights() const { return trafficLights; }
