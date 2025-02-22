@@ -44,8 +44,8 @@ namespace SimConstants {
     // Vehicle Configuration
     static constexpr float VEHICLE_WIDTH = 40.0f;
     static constexpr float VEHICLE_HEIGHT = 30.0f;
-    static constexpr float VEHICLE_BASE_SPEED = 100.0f;
-    static constexpr float VEHICLE_TURN_SPEED = 60.0f;
+    static constexpr float VEHICLE_BASE_SPEED = 50.0f;
+    static constexpr float VEHICLE_TURN_SPEED = 30.0f;
 
     // Traffic Light Configuration
     static constexpr float LIGHT_SIZE = 40.0f;
@@ -58,5 +58,8 @@ namespace SimConstants {
     // System Timing
     static constexpr int FILE_CHECK_INTERVAL = 100;    // ms
     static constexpr int TRAFFIC_UPDATE_INTERVAL = 50; // ms
-    static constexpr float VEHICLE_PROCESS_TIME = 2.0f; // seconds
+    static constexpr float VEHICLE_PROCESS_TIME = 3.0f; // seconds
+
+// Add these constants to the class
+static constexpr float UPDATE_INTERVAL = 0.016f;         // ~60 FPS
 };
