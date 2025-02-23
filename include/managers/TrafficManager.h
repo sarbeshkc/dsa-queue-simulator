@@ -1,4 +1,4 @@
-// T// TrafficManager.h
+// TrafficManager.h
 #pragma once
 #include "core/Constants.h"
 #include "core/Lane.h"
@@ -88,6 +88,8 @@ private:
     void updateVehicleQueuePosition(VehicleState& state, LaneId laneId, size_t queuePosition);
     void calculateTargetPosition(VehicleState& state, LaneId laneId);
 
+    bool isNearIntersection(const VehicleState& state) const;
+
     // Lane management methods
     LaneId determineOptimalLane(Direction direction, LaneId sourceLane) const;
     bool isValidSpawnLane(LaneId laneId, Direction direction) const;
@@ -96,8 +98,6 @@ private:
     void processNewVehicles();
     Position calculateLaneEndpoint(LaneId laneId) const;
     bool isInIntersection(const Position& pos) const;
-
-    bool isNearIntersection(const VehicleState& state) const;
 
     // Traffic light management
     void updateTrafficLights(float deltaTime);
@@ -120,5 +120,3 @@ private:
     size_t getQueuedVehicleCount() const;
     void cleanupRemovedVehicles();
 };
-
-
