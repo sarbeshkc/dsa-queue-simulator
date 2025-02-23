@@ -37,6 +37,10 @@ struct VehicleState {
     size_t queuePosition;        // Position in lane queue
     bool inIntersection;        // Whether in intersection
     bool isPassing;             // Whether passing through intersection
+    bool isChangingLanes;       // Whether changing lanes
+    bool hasStoppedAtLight;     // Whether stopped at light
+    std::vector<Position> intermediateTargets;  // Waypoints for lane changes
+    size_t currentTargetIndex;   // Current waypoint index
 };
 
 class TrafficManager {
@@ -90,6 +94,23 @@ private:
 
     bool isNearIntersection(const VehicleState& state) const;
 
+
+    void updateVehicleMovement(VehicleState& state, float deltaTime);
+
+
+
+    // Add these new member function declarations
+    LightState getLightStateForLane(LaneId laneId) const;
+    float getDistanceToIntersection(const VehicleState& state) const;
+    bool hasVehicleAhead(const VehicleState& state) const;
+    LaneId determineTargetLane(LaneId currentLane, Direction direction) const;
+    void changeLaneToFree(VehicleState& state);
+    void changeLaneToFirst(VehicleState& state);
+    void calculateLeftTurnPath(VehicleState& state);
+    void calculateRightTurnPath(VehicleState& state);
+
+    bool isVehicleAhead(const VehicleState& first, const VehicleState& second) const;
+
     // Lane management methods
     LaneId determineOptimalLane(Direction direction, LaneId sourceLane) const;
     bool isValidSpawnLane(LaneId laneId, Direction direction) const;
@@ -113,6 +134,8 @@ private:
     size_t calculateVehiclesToProcess() const;
     void checkWaitTimes();
     void updateTimers(float deltaTime);
+
+    void removeVehicle(uint32_t vehicleId);
 
     // Statistics and metrics
     void updateStatistics(float deltaTime);

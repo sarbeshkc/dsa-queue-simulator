@@ -29,6 +29,13 @@ enum class LightState {
 };
 
 namespace SimConstants {
+
+
+  static constexpr float VEHICLE_LENGTH = 50.0f;  // Length of vehicle for queue spacing
+
+
+static constexpr size_t PRIORITY_THRESHOLD = 10;     // Switch to priority mode at 10 vehicles
+static constexpr size_t NORMAL_THRESHOLD = 5;
     // Window and Display
     static constexpr int WINDOW_WIDTH = 1280;
     static constexpr int WINDOW_HEIGHT = 960;
@@ -40,6 +47,11 @@ namespace SimConstants {
     static constexpr int LANE_WIDTH = 120;     // Individual lane width
     static constexpr float QUEUE_SPACING = 60.0f;
     static constexpr float QUEUE_START_OFFSET = 200.0f;
+
+
+    static constexpr float QUEUE_START = ROAD_WIDTH / 2.0f + 50.0f;  // Where queues start from intersection
+
+    static constexpr float LANE_OFFSET = ROAD_WIDTH / 6.0f;  // Half of lane width
 
     // Vehicle Configuration
     static constexpr float VEHICLE_WIDTH = 40.0f;
@@ -66,7 +78,6 @@ namespace SimConstants {
     static constexpr int TRAFFIC_UPDATE_INTERVAL = 50; // ms
     static constexpr float VEHICLE_PROCESS_TIME = 3.0f; // seconds
 
-    static constexpr float QUEUE_LANE_OFFSET = 120.0f;
 
     static constexpr float TURN_ENTRY_DISTANCE = 100.0f;
     static constexpr float TURN_EXIT_DISTANCE = 100.0f;

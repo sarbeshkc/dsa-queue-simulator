@@ -75,23 +75,21 @@ void Generator::clearAllFiles() {
 }
 
 void Generator::initializeLaneSettings() {
-    laneSettings = {
-        {LaneId::AL1_INCOMING, {0.25, 12, "A1 (Left Incoming)"}},
-        {LaneId::AL2_PRIORITY, {0.3, 15, "A2 (Left Priority)"}},
-        {LaneId::AL3_FREELANE, {0.2, 8, "A3 (Left Free)"}},
-        {LaneId::BL1_INCOMING, {0.25, 12, "B1 (Top Incoming)"}},
-        {LaneId::BL2_NORMAL, {0.25, 12, "B2 (Top Normal)"}},
-        {LaneId::BL3_FREELANE, {0.2, 8, "B3 (Top Free)"}},
-        {LaneId::CL1_INCOMING, {0.25, 12, "C1 (Right Incoming)"}},
-        {LaneId::CL2_NORMAL, {0.25, 12, "C2 (Right Normal)"}},
-        {LaneId::CL3_FREELANE, {0.2, 8, "C3 (Right Free)"}},
-        {LaneId::DL1_INCOMING, {0.25, 12, "D1 (Bottom Incoming)"}},
-        {LaneId::DL2_NORMAL, {0.25, 12, "D2 (Bottom Normal)"}},
-        {LaneId::DL3_FREELANE, {0.2, 8, "D3 (Bottom Free)"}}
-    };
+    laneSettings.clear();  // Clear existing settings first
+
+    laneSettings[LaneId::AL1_INCOMING] = {0.12, 12, "A1 (West Incoming)"};
+    laneSettings[LaneId::AL2_PRIORITY] = {0.15, 15, "A2 (West Priority)"};
+    laneSettings[LaneId::AL3_FREELANE] = {0.10, 8, "A3 (West Free)"};
+    laneSettings[LaneId::BL1_INCOMING] = {0.12, 12, "B1 (North Incoming)"};
+    laneSettings[LaneId::BL2_NORMAL] = {0.12, 12, "B2 (North Normal)"};
+    laneSettings[LaneId::BL3_FREELANE] = {0.10, 8, "B3 (North Free)"};
+    laneSettings[LaneId::CL1_INCOMING] = {0.12, 12, "C1 (East Incoming)"};
+    laneSettings[LaneId::CL2_NORMAL] = {0.12, 12, "C2 (East Normal)"};
+    laneSettings[LaneId::CL3_FREELANE] = {0.10, 8, "C3 (East Free)"};
+    laneSettings[LaneId::DL1_INCOMING] = {0.12, 12, "D1 (South Incoming)"};
+    laneSettings[LaneId::DL2_NORMAL] = {0.12, 12, "D2 (South Normal)"};
+    laneSettings[LaneId::DL3_FREELANE] = {0.10, 8, "D3 (South Free)"};
 }
-
-
 
 Direction Generator::generateRandomDirection() {
     std::uniform_int_distribution<> dist(0, 100);
@@ -226,20 +224,13 @@ void Generator::generateTraffic() {
         // Display current stats periodically
         static int updateCounter = 0;
         if (++updateCounter % 10 == 0) {
-            std::cout << "\n=== Traffic Generation Stats ===" << std::endl;
-            for (const auto& [laneId, filepath] : laneFiles) {
-                size_t count = countVehiclesInFile(filepath);
-                std::cout << "Lane " << static_cast<int>(laneId)
-                         << ": " << count << " vehicles" << std::endl;
-            }
-            std::cout << "Total vehicles generated: " << (nextVehicleId - 1) << std::endl;
-            std::cout << "==============================\n" << std::endl;
+            displayStatus();
         }
-
     } catch (const std::exception& e) {
         std::cerr << "Error in traffic generation: " << e.what() << std::endl;
     }
 }
+
 
 
 void Generator::displayStatus() const {
