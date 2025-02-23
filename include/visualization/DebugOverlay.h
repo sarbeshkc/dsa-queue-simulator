@@ -1,8 +1,7 @@
-// include/visualization/DebugOverlay.h
+// DebugOverlay.h
 #pragma once
-#define _USE_MATH_DEFINES
-#include <cmath>
 #include <SDL3/SDL.h>
+#include <cmath>
 #include "managers/TrafficManager.h"
 #include <map>
 

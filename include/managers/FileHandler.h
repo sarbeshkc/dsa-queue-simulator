@@ -1,62 +1,77 @@
-// include/managers/FileHandler.hpp
+//FileHandler.h
 #pragma once
 #include "core/Vehicle.h"
+#include "core/Constants.h"
 #include <memory>
 #include <vector>
 #include <string>
 #include <map>
 #include <filesystem>
-#include <fstream>
-#include <iostream>
+#include <chrono>
+#include <mutex>
 
 class FileHandler {
-private:
-
-
-
-    static constexpr int WINDOW_WIDTH = 1024;
-    static constexpr int WINDOW_HEIGHT = 768;
-    static constexpr int ROAD_WIDTH = 270;     // Width for 3 lanes (90 * 3)
-    static constexpr int LANE_WIDTH = 90;      // Individual lane width
-    static constexpr int CENTER_X = WINDOW_WIDTH / 2;
-    static constexpr int CENTER_Y = WINDOW_HEIGHT / 2;
-    static constexpr float QUEUE_SPACING = 40.0f;
-    static constexpr float QUEUE_START_OFFSET = 250.0f;
-
-
-
-    static const std::string BASE_PATH;
-
-
-void ensureDataDirectoryExists() {
-    const auto dataPath = std::filesystem::current_path() / "data" / "lanes";
-    std::filesystem::create_directories(dataPath);
-    std::cout << "Data directory ensured at: " << dataPath << std::endl;
-}
-
-// Add this to FileHandler class header
-void debugPrintFileContents(const std::filesystem::path& filepath) {
-    std::ifstream file(filepath);
-    if (!file) {
-        std::cerr << "Could not open file for debug: " << filepath << std::endl;
-        return;
-    }
-
-    std::string line;
-    while (std::getline(file, line)) {
-        std::cout << "File content: " << line << std::endl;
-    }
-}
-    std::map<LaneId, std::filesystem::path> laneFiles;
-    std::map<std::filesystem::path, int64_t> lastReadPositions;
-    std::filesystem::path dataDir;
-
 public:
-    FileHandler();  // Declaration only, definition will be in cpp file
+    FileHandler();
+    ~FileHandler() = default;
 
+    // Core file operations
     std::vector<std::pair<LaneId, std::shared_ptr<Vehicle>>> readNewVehicles();
     void clearLaneFiles();
+    bool writeVehicleToLane(LaneId laneId, const std::shared_ptr<Vehicle>& vehicle);
+
+    // State queries
+    bool isLaneFileAvailable(LaneId laneId) const;
+    size_t getVehicleCountInFile(LaneId laneId) const;
+    std::chrono::system_clock::time_point getLastModifiedTime(LaneId laneId) const;
 
 private:
+    // File management
+    std::map<LaneId, std::filesystem::path> laneFiles;
+    std::map<std::filesystem::path, std::chrono::steady_clock::time_point> lastCheckTimes;
+    std::map<std::filesystem::path, int64_t> lastReadPositions;
+    std::filesystem::path dataDir;
+    std::mutex fileMutex;
+
+    // Configuration
+    static constexpr int FILE_CHECK_INTERVAL_MS = 100;
+    static const std::string BASE_PATH;
+
+    // File operation methods
+    void initializeFileSystem();
+    void validateFileSystem() const;
     std::vector<std::shared_ptr<Vehicle>> parseVehicleData(const std::string& data, LaneId laneId);
+    std::shared_ptr<Vehicle> parseVehicleLine(const std::string& line, LaneId laneId);
+    void updateLastReadPosition(const std::filesystem::path& filepath, int64_t position);
+
+    // Helper methods
+    std::filesystem::path getLaneFilePath(LaneId laneId) const;
+    bool shouldCheckFile(const std::filesystem::path& filepath) const;
+    void ensureDirectoryExists(const std::filesystem::path& dir);
+    void logFileOperation(const std::string& operation, const std::filesystem::path& filepath) const;
+
+    // File access checks
+    bool hasReadAccess(const std::filesystem::path& filepath) const;
+    bool hasWriteAccess(const std::filesystem::path& filepath) const;
+
+    // Error handling
+    void handleFileError(const std::string& operation, const std::filesystem::path& filepath, const std::exception& e) const;
+    void validateFilePath(const std::filesystem::path& filepath) const;
+
+    // Data validation
+    bool isValidVehicleData(const std::string& data) const;
+    bool isValidVehicleId(uint32_t id) const;
+    bool isValidDirection(char dirChar) const;
+
+    // File system utilities
+    void createEmptyFile(const std::filesystem::path& filepath);
+    bool isFileEmpty(const std::filesystem::path& filepath) const;
+    void truncateFile(const std::filesystem::path& filepath);
+
+#ifdef _DEBUG
+    // Debug helpers
+    void dumpFileContents(const std::filesystem::path& filepath) const;
+    void validateFileIntegrity() const;
+    void checkFileSizes() const;
+#endif
 };

@@ -1,5 +1,4 @@
 
-#define _USE_MATH_DEFINES
 
 #include "visualization/Renderer.h"
 #include <iostream>
@@ -341,14 +340,17 @@ void Renderer::renderTrafficLights(const std::map<LaneId, TrafficLight>& lights)
             );
         }
     }
-}void Renderer::renderVehicles(const std::map<uint32_t, VehicleState>& vehicles) {
+}
+
+
+void Renderer::renderVehicles(const std::map<uint32_t, VehicleState>& vehicles) {
     for (const auto& [id, state] : vehicles) {
-        float angle = calculateTurningAngle(state);
         renderVehicle(
-            state.x, state.y,
+            state.pos.x,          // Use pos.x instead of x
+            state.pos.y,          // Use pos.y instead of y
             state.direction,
             state.vehicle->getCurrentLane() == LaneId::AL2_PRIORITY,
-            angle,
+            state.turnAngle,
             state.isMoving
         );
     }
@@ -660,7 +662,9 @@ void Renderer::cleanup() {
 }
 
 float Renderer::calculateTurningAngle(const VehicleState& state) const {
-    return atan2f(state.targetY - state.y, state.targetX - state.x);
+    float dx = state.targetPos.x - state.pos.x;
+    float dy = state.targetPos.y - state.pos.y;
+    return std::atan2f(dy, dx);
 }
 
 SDL_Color Renderer::getLaneColor(LaneId laneId, bool isActive) const {

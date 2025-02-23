@@ -1,6 +1,5 @@
 #pragma once
 
-#define _USE_MATH_DEFINES  // Required for M_PI constant
 
 // Core SDL includes
 #include <SDL3/SDL.h>

@@ -47,6 +47,12 @@ namespace SimConstants {
     static constexpr float VEHICLE_BASE_SPEED = 50.0f;
     static constexpr float VEHICLE_TURN_SPEED = 30.0f;
 
+    static constexpr float VEHICLE_MIN_SPACING = 60.0f;
+
+    static constexpr float VEHICLE_ACCEL_RATE = 2.0f;
+
+    static constexpr float VEHICLE_DECEL_RATE = 4.0f;
+
     // Traffic Light Configuration
     static constexpr float LIGHT_SIZE = 40.0f;
     static constexpr float LIGHT_SPACING = 60.0f;
@@ -59,6 +65,19 @@ namespace SimConstants {
     static constexpr int FILE_CHECK_INTERVAL = 100;    // ms
     static constexpr int TRAFFIC_UPDATE_INTERVAL = 50; // ms
     static constexpr float VEHICLE_PROCESS_TIME = 3.0f; // seconds
+
+    static constexpr float QUEUE_LANE_OFFSET = 120.0f;
+
+    static constexpr float TURN_ENTRY_DISTANCE = 100.0f;
+    static constexpr float TURN_EXIT_DISTANCE = 100.0f;
+
+    // Intersection Configuration
+    static constexpr float INTERSECTION_SIZE = 360.0f;
+    static constexpr float STOP_LINE_OFFSET = 20.0f;
+    static constexpr float CROSSWALK_WIDTH = 30.0f;
+
+  static constexpr float MAX_WAIT_TIME = 30.0f;
+
 
 // Add these constants to the class
 static constexpr float UPDATE_INTERVAL = 0.016f;         // ~60 FPS
