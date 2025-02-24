@@ -1,6 +1,7 @@
-// Constants.h
+// include/core/Constants.h
 #pragma once
 #include <cstdint>
+#include <cmath>
 
 enum class LaneId {
     AL1_INCOMING,
@@ -29,13 +30,11 @@ enum class LightState {
 };
 
 namespace SimConstants {
+    // Queue and priority thresholds
+    static constexpr float VEHICLE_LENGTH = 50.0f;  // Length of vehicle for queue spacing
+    static constexpr size_t PRIORITY_THRESHOLD = 10;     // Switch to priority mode at 10 vehicles
+    static constexpr size_t NORMAL_THRESHOLD = 5;        // Return to normal mode at 5 vehicles
 
-
-  static constexpr float VEHICLE_LENGTH = 50.0f;  // Length of vehicle for queue spacing
-
-
-static constexpr size_t PRIORITY_THRESHOLD = 10;     // Switch to priority mode at 10 vehicles
-static constexpr size_t NORMAL_THRESHOLD = 5;
     // Window and Display
     static constexpr int WINDOW_WIDTH = 1280;
     static constexpr int WINDOW_HEIGHT = 960;
@@ -47,10 +46,7 @@ static constexpr size_t NORMAL_THRESHOLD = 5;
     static constexpr int LANE_WIDTH = 120;     // Individual lane width
     static constexpr float QUEUE_SPACING = 60.0f;
     static constexpr float QUEUE_START_OFFSET = 200.0f;
-
-
     static constexpr float QUEUE_START = ROAD_WIDTH / 2.0f + 50.0f;  // Where queues start from intersection
-
     static constexpr float LANE_OFFSET = ROAD_WIDTH / 6.0f;  // Half of lane width
 
     // Vehicle Configuration
@@ -58,12 +54,12 @@ static constexpr size_t NORMAL_THRESHOLD = 5;
     static constexpr float VEHICLE_HEIGHT = 30.0f;
     static constexpr float VEHICLE_BASE_SPEED = 50.0f;
     static constexpr float VEHICLE_TURN_SPEED = 30.0f;
-
     static constexpr float VEHICLE_MIN_SPACING = 60.0f;
-
     static constexpr float VEHICLE_ACCEL_RATE = 2.0f;
-
     static constexpr float VEHICLE_DECEL_RATE = 4.0f;
+
+    // Added for animation
+    static constexpr float TURN_SPEED = 0.5f;  // Speed at which turns progress
 
     // Traffic Light Configuration
     static constexpr float LIGHT_SIZE = 40.0f;
@@ -77,8 +73,6 @@ static constexpr size_t NORMAL_THRESHOLD = 5;
     static constexpr int FILE_CHECK_INTERVAL = 100;    // ms
     static constexpr int TRAFFIC_UPDATE_INTERVAL = 50; // ms
     static constexpr float VEHICLE_PROCESS_TIME = 3.0f; // seconds
-
-
     static constexpr float TURN_ENTRY_DISTANCE = 100.0f;
     static constexpr float TURN_EXIT_DISTANCE = 100.0f;
 
@@ -86,13 +80,11 @@ static constexpr size_t NORMAL_THRESHOLD = 5;
     static constexpr float INTERSECTION_SIZE = 360.0f;
     static constexpr float STOP_LINE_OFFSET = 20.0f;
     static constexpr float CROSSWALK_WIDTH = 30.0f;
+    static constexpr float MAX_WAIT_TIME = 30.0f;
+    static constexpr float MIN_VEHICLE_SPACING = 60.0f;
+    static constexpr float MIN_STATE_TIME = 5.0f;        // Minimum time in any state
+    static constexpr float MAX_STATE_TIME = 30.0f;       // Maximum time in any state
 
-  static constexpr float MAX_WAIT_TIME = 30.0f;
-
-
-static constexpr float MIN_VEHICLE_SPACING = 60.0f;
-
-
-// Add these constants to the class
-static constexpr float UPDATE_INTERVAL = 0.016f;         // ~60 FPS
-};
+    // Frame rate control
+    static constexpr float UPDATE_INTERVAL = 0.016f;  // ~60 FPS
+};;

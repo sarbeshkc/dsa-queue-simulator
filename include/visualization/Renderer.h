@@ -1,12 +1,11 @@
+/// include/visualization/Renderer.h
 #pragma once
-
 
 // Core SDL includes
 #include <SDL3/SDL.h>
 
 // Project includes
 #include "managers/TrafficManager.h"
-#include "visualization/DebugOverlay.h"
 #include "core/Constants.h"
 
 // Standard library includes
@@ -25,7 +24,6 @@ private:
     SDL_Renderer* renderer;
 
     // Debug components
-    DebugOverlay debugOverlay;
     bool debugMode;
     bool showGrid;
 
@@ -51,9 +49,8 @@ private:
     // Traffic elements rendering
     void renderDirectionalArrows();
     void renderTrafficLights(const std::map<LaneId, TrafficLight>& lights);
-
     void renderTrafficLight(float x, float y, float rotation, LightState state);
-    void renderVehicles(const std::map<uint32_t, VehicleState>& vehicles);
+    void renderVehicles(const std::map<uint32_t, std::shared_ptr<Vehicle>>& vehicles);
     void renderVehicle(float x, float y, Direction dir, bool isPriority, float angle, bool isMoving);
     void renderPriorityLane();
     void renderPriorityLaneIndicator();
@@ -70,7 +67,7 @@ private:
     void renderDashedLine(float x1, float y1, float x2, float y2);
     void renderRoundedRect(float x, float y, float w, float h, float radius);
     SDL_FPoint rotatePoint(float x, float y, float cx, float cy, float angle);
-    float calculateTurningAngle(const VehicleState& state) const;
+    float calculateTurningAngle(float targetX, float targetY, float currentX, float currentY) const;
     SDL_Color getLaneColor(LaneId laneId, bool isActive) const;
 
 public:
