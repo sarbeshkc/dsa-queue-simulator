@@ -47,6 +47,7 @@ static constexpr size_t NORMAL_THRESHOLD = 5;
     static constexpr int LANE_WIDTH = 120;     // Individual lane width
     static constexpr float QUEUE_SPACING = 60.0f;
     static constexpr float QUEUE_START_OFFSET = 200.0f;
+    static constexpr float ROAD_LENGTH = 600.0f;  // Length of each road from center
 
 
     static constexpr float QUEUE_START = ROAD_WIDTH / 2.0f + 50.0f;  // Where queues start from intersection
@@ -56,8 +57,9 @@ static constexpr size_t NORMAL_THRESHOLD = 5;
     // Vehicle Configuration
     static constexpr float VEHICLE_WIDTH = 40.0f;
     static constexpr float VEHICLE_HEIGHT = 30.0f;
-    static constexpr float VEHICLE_BASE_SPEED = 50.0f;
-    static constexpr float VEHICLE_TURN_SPEED = 30.0f;
+    static constexpr float VEHICLE_BASE_SPEED = 100.0f;  // Base speed for vehicles
+    static constexpr float VEHICLE_TURN_SPEED = 75.0f;   // Speed during turns
+    static constexpr float TURN_SPEED = 0.8f;  // Units per second for turning animation
 
     static constexpr float VEHICLE_MIN_SPACING = 60.0f;
 
@@ -75,7 +77,7 @@ static constexpr size_t NORMAL_THRESHOLD = 5;
 
     // System Timing
     static constexpr int FILE_CHECK_INTERVAL = 100;    // ms
-    static constexpr int TRAFFIC_UPDATE_INTERVAL = 50; // ms
+    static constexpr float TRAFFIC_UPDATE_INTERVAL = 5000.0f;  // 5 seconds between light changes
     static constexpr float VEHICLE_PROCESS_TIME = 3.0f; // seconds
 
 
@@ -95,4 +97,8 @@ static constexpr float MIN_VEHICLE_SPACING = 60.0f;
 
 // Add these constants to the class
 static constexpr float UPDATE_INTERVAL = 0.016f;         // ~60 FPS
+
+// Traffic Light Timing
+static constexpr float MIN_GREEN_TIME = 10.0f;  // Minimum green light duration
+static constexpr float MAX_GREEN_TIME = 30.0f;  // Maximum green light duration
 };

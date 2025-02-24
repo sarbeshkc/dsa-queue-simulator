@@ -1,26 +1,25 @@
 // Lane.h
 #pragma once
-#include "Vehicle.h"
-#include "utils/Queue.h"
+#include "core/Constants.h"
+#include "core/Vehicle.h"
+#include <queue>
 #include <memory>
-#include <string>
 
 class Lane {
 private:
     LaneId id;
-    Queue<std::shared_ptr<Vehicle>> vehicleQueue;
     bool isPriority;
-    std::string dataFile;
+    std::queue<std::shared_ptr<Vehicle>> vehicles;
 
 public:
-    Lane(LaneId id, bool isPriority);
+    Lane(LaneId laneId, bool priority = false);
 
     void addVehicle(std::shared_ptr<Vehicle> vehicle);
+    std::shared_ptr<Vehicle> peekFront() const;
+    std::shared_ptr<Vehicle> dequeue();
     std::shared_ptr<Vehicle> removeVehicle();
-    Direction getVehicleDirection(size_t index) const;  // Add this method
-    size_t getQueueSize() const;
-    bool isPriorityLane() const;
+    LaneId getLaneId() const;
     LaneId getId() const;
-    const std::string& getDataFile() const;
-    void update();
+    bool isPriorityLane() const;
+    size_t getQueueSize() const;
 };

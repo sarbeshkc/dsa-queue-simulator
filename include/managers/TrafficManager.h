@@ -90,7 +90,10 @@ private:
     void calculateLeftTurnPath(VehicleState& state);
     void calculateRightTurnPath(VehicleState& state);
     void calculateTargetPosition(VehicleState& state, LaneId laneId);
+    void calculateInitialPosition(VehicleState& state, LaneId laneId);
     bool hasReachedDestination(const VehicleState& state) const;
+    void completeTurn(VehicleState& state);
+    void checkTrafficLightAndProceed(VehicleState& state);
 
     // Vehicle state management
     void addNewVehicleToState(std::shared_ptr<Vehicle> vehicle, LaneId laneId);
@@ -121,7 +124,7 @@ private:
     void changeLaneToFirst(VehicleState& state);
 
     // Traffic light management
-    void updateTrafficLights(float deltaTime);
+    void updateTrafficLights();
     void synchronizeTrafficLights();
     void handleStateTransition(float deltaTime);
     bool checkPriorityConditions() const;
@@ -135,4 +138,8 @@ private:
     void updateStatistics(float deltaTime);
     float calculateAverageWaitTime() const;
     size_t getQueuedVehicleCount() const;
+
+    void checkTurningConditions(Vehicle& vehicle);
+    void processQueuedVehicles();
+    bool hasCompletedJourney(const Vehicle& vehicle) const;
 };

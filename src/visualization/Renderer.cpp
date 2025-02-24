@@ -1,13 +1,16 @@
-
-
 #include "visualization/Renderer.h"
 #include <iostream>
 #include <cmath>
-#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 Renderer::Renderer()
     : window(nullptr)
     , renderer(nullptr)
-    , debugMode(false) {
+    , debugMode(false)
+    , showGrid(false) {
 }
 
 Renderer::~Renderer() {
@@ -32,7 +35,7 @@ bool Renderer::initialize() {
         return false;
     }
 
-    renderer = SDL_CreateRenderer(window, nullptr);
+    renderer = SDL_CreateRenderer(window, NULL);
     if (!renderer) {
         std::cerr << "Renderer creation failed: " << SDL_GetError() << std::endl;
         return false;
@@ -65,8 +68,8 @@ void Renderer::render(const TrafficManager& trafficManager) {
     }
 
     // Debug visualization
-    if (debugMode) {
-        if (showGrid) {
+    if (debugMode == true) {
+        if (showGrid == true) {
             drawDebugGrid();
         }
         renderLaneIdentifiers();
@@ -346,8 +349,8 @@ void Renderer::renderTrafficLights(const std::map<LaneId, TrafficLight>& lights)
 void Renderer::renderVehicles(const std::map<uint32_t, VehicleState>& vehicles) {
     for (const auto& [id, state] : vehicles) {
         renderVehicle(
-            state.pos.x,          // Use pos.x instead of x
-            state.pos.y,          // Use pos.y instead of y
+            state.pos.x,
+            state.pos.y,
             state.direction,
             state.vehicle->getCurrentLane() == LaneId::AL2_PRIORITY,
             state.turnAngle,
@@ -360,7 +363,7 @@ void Renderer::renderVehicle(float x, float y, Direction dir, bool isPriority, f
     const float halfWidth = VEHICLE_WIDTH / 2.0f;
     const float halfHeight = VEHICLE_HEIGHT / 2.0f;
 
-    // Create a smoother vehicle shape
+    // Create a smoother vehicle shape with 8 vertices
     SDL_FPoint vertices[8] = {
         // Front
         {x + (halfWidth * 0.8f) * cosf(angle), y + (halfWidth * 0.8f) * sinf(angle)},
@@ -419,7 +422,7 @@ void Renderer::renderVehicle(float x, float y, Direction dir, bool isPriority, f
         }
     }
 
-    // Movement trail
+    // Movement trail effect
     if (isMoving) {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 50);
         float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
