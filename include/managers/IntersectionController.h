@@ -51,12 +51,12 @@ private:
     size_t totalVehiclesProcessed;
 
     // Configuration constants
-    static constexpr size_t PRIORITY_THRESHOLD = 10;
-    static constexpr size_t PRIORITY_RELEASE_THRESHOLD = 5;
-    static constexpr float BASE_VEHICLE_PROCESS_TIME = 2.0f;
-    static constexpr float MIN_STATE_TIME = 5.0f;
-    static constexpr float MAX_STATE_TIME = 30.0f;
-    static constexpr float MAX_WAIT_TIME = 45.0f;
+    static constexpr size_t PRIORITY_THRESHOLD = 10;     // Switch to priority mode at 10 vehicles
+    static constexpr size_t PRIORITY_RELEASE_THRESHOLD = 5; // Return to normal mode at 5 vehicles
+    static constexpr float MIN_STATE_TIME = 5.0f;        // Minimum time in any state
+    static constexpr float MAX_STATE_TIME = 30.0f;       // Maximum time in any state
+    static constexpr float MAX_WAIT_TIME = 45.0f;        // Maximum vehicle wait time
+    static constexpr float BASE_VEHICLE_PROCESS_TIME = 2.0f; // Base time to process one vehicle
 
     // Queue management methods
     void updateLaneQueue();
@@ -69,13 +69,13 @@ private:
     void handleStateTransition();
     void checkWaitTimes();
     void updateTimers(float deltaTime);
+    void resetStateTimers();
 
     // Utility methods
     float calculateAverageWaitingVehicles() const;
     float calculateProcessingTime() const;
     bool shouldSwitchToNormalMode() const;
     bool shouldSwitchToPriorityMode() const;
-    void resetStateTimers();
     Lane* getPriorityLane() const;
     bool isFreeLane(LaneId id) const;
     int calculateLanePriority(const Lane& lane) const;

@@ -90,6 +90,9 @@ static constexpr size_t NORMAL_THRESHOLD = 5;
   static constexpr float MAX_WAIT_TIME = 30.0f;
 
 
+static constexpr float MIN_VEHICLE_SPACING = 60.0f;
+
+
 // Add these constants to the class
 static constexpr float UPDATE_INTERVAL = 0.016f;         // ~60 FPS
 };

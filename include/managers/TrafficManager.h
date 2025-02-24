@@ -1,4 +1,3 @@
-// TrafficManager.h
 #pragma once
 #include "core/Constants.h"
 #include "core/Lane.h"
@@ -80,45 +79,46 @@ private:
     static constexpr float MAX_STATE_TIME = 30.0f;
     static constexpr float VEHICLE_PROCESS_TIME = 2.0f;
 
-    // Vehicle management methods
-    void addNewVehicleToState(std::shared_ptr<Vehicle> vehicle, LaneId laneId);
+    // Vehicle movement methods
     void updateVehiclePositions(float deltaTime);
+    void updateVehicleMovement(VehicleState& state, float deltaTime);
     void updateStraightMovement(VehicleState& state, float deltaTime);
     void updateTurningMovement(VehicleState& state, float deltaTime);
     bool checkCollision(const VehicleState& state, float newX, float newY) const;
-    float calculateTurningRadius(Direction dir) const;
+    void calculateTurnParameters(VehicleState& state);
     void calculateTurnPath(VehicleState& state);
-    bool hasReachedDestination(const VehicleState& state) const;
-    void updateVehicleQueuePosition(VehicleState& state, LaneId laneId, size_t queuePosition);
-    void calculateTargetPosition(VehicleState& state, LaneId laneId);
-
-    bool isNearIntersection(const VehicleState& state) const;
-
-
-    void updateVehicleMovement(VehicleState& state, float deltaTime);
-
-
-
-    // Add these new member function declarations
-    LightState getLightStateForLane(LaneId laneId) const;
-    float getDistanceToIntersection(const VehicleState& state) const;
-    bool hasVehicleAhead(const VehicleState& state) const;
-    LaneId determineTargetLane(LaneId currentLane, Direction direction) const;
-    void changeLaneToFree(VehicleState& state);
-    void changeLaneToFirst(VehicleState& state);
     void calculateLeftTurnPath(VehicleState& state);
     void calculateRightTurnPath(VehicleState& state);
+    void calculateTargetPosition(VehicleState& state, LaneId laneId);
+    bool hasReachedDestination(const VehicleState& state) const;
 
+    // Vehicle state management
+    void addNewVehicleToState(std::shared_ptr<Vehicle> vehicle, LaneId laneId);
+    void updateVehicleQueuePosition(VehicleState& state, LaneId laneId, size_t queuePosition);
+    bool isNearIntersection(const VehicleState& state) const;
+    bool isInIntersection(const Position& pos) const;
+    float getDistanceToIntersection(const VehicleState& state) const;
+    bool hasVehicleAhead(const VehicleState& state) const;
     bool isVehicleAhead(const VehicleState& first, const VehicleState& second) const;
+    float calculateTurningRadius(Direction dir) const;
+
+    // Traffic flow methods
+    void processNewVehicles();
+    void processPriorityLane();
+    void processNormalLanes(size_t vehicleCount);
+    void processFreeLanes();
+    void checkWaitTimes();
+    size_t calculateVehiclesToProcess() const;
 
     // Lane management methods
     LaneId determineOptimalLane(Direction direction, LaneId sourceLane) const;
+    LaneId determineTargetLane(LaneId currentLane, Direction direction) const;
     bool isValidSpawnLane(LaneId laneId, Direction direction) const;
     bool isFreeLane(LaneId laneId) const;
     Lane* getPriorityLane() const;
-    void processNewVehicles();
     Position calculateLaneEndpoint(LaneId laneId) const;
-    bool isInIntersection(const Position& pos) const;
+    void changeLaneToFree(VehicleState& state);
+    void changeLaneToFirst(VehicleState& state);
 
     // Traffic light management
     void updateTrafficLights(float deltaTime);
@@ -126,20 +126,13 @@ private:
     void handleStateTransition(float deltaTime);
     bool checkPriorityConditions() const;
     bool canVehicleMove(const VehicleState& state) const;
+    LightState getLightStateForLane(LaneId laneId) const;
 
-    // Queue processing
-    void processPriorityLane();
-    void processNormalLanes(size_t vehicleCount);
-    void processFreeLanes();
-    size_t calculateVehiclesToProcess() const;
-    void checkWaitTimes();
+    // Utility methods
     void updateTimers(float deltaTime);
-
+    void cleanupRemovedVehicles();
     void removeVehicle(uint32_t vehicleId);
-
-    // Statistics and metrics
     void updateStatistics(float deltaTime);
     float calculateAverageWaitTime() const;
     size_t getQueuedVehicleCount() const;
-    void cleanupRemovedVehicles();
 };

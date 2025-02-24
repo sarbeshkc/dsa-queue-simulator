@@ -1,5 +1,4 @@
-// include/core/Vehicle.h
-#pragma once
+# pragma once
 #include "core/Constants.h"
 #include <cstdint>
 #include <chrono>
@@ -8,18 +7,18 @@
 
 class Vehicle {
 private:
-    uint32_t id;                    // Unique identifier
-    Direction direction;            // Vehicle's intended direction
-    LaneId currentLane;            // Current lane position
-    float waitTime;                // Time spent waiting in queue
-    bool isProcessing;             // Whether vehicle is being processed
-    float turnProgress;            // Progress of turning motion (0-1)
-    bool hasStartedTurn;           // Whether turn has begun
-    float speed;                   // Current movement speed
-    float position;                // Position in lane
-    std::chrono::steady_clock::time_point entryTime; // Time entered system
+    uint32_t id;
+    Direction direction;
+    LaneId currentLane;
+    LaneId targetLane;  // Added for lane transitions
+    float waitTime;
+    bool isProcessing;
+    float turnProgress;
+    bool hasStartedTurn;
+    float speed;
+    float position;
+    std::chrono::steady_clock::time_point entryTime;
 
-    // Movement tracking
     struct Position {
         float x;
         float y;
@@ -30,13 +29,13 @@ private:
     } pos;
 
 public:
-    // Constructor
     Vehicle(uint32_t vehicleId, Direction dir, LaneId lane);
 
     // Core accessors
     uint32_t getId() const { return id; }
     Direction getDirection() const { return direction; }
     LaneId getCurrentLane() const { return currentLane; }
+    LaneId getTargetLane() const { return targetLane; }
     bool isInProcess() const { return isProcessing; }
     float getWaitTime() const { return waitTime; }
     float getTurnProgress() const { return turnProgress; }
@@ -59,6 +58,7 @@ public:
     void startTurn();
     void setSpeed(float newSpeed);
     void setPosition(float pos);
+    void setTargetLane(LaneId lane) { targetLane = lane; }
 
     // Movement control
     void setTargetPosition(float x, float y, float angle);
