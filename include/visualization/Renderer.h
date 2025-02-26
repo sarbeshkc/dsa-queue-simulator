@@ -67,6 +67,7 @@ private:
     void drawDebugOverlay();
     void drawLaneLabels();
     void drawStatistics();
+    void drawQueueLengthIndicators(); // Added function declaration
 
     // Text rendering (simplified without TTF)
     void drawText(const std::string& text, int x, int y, SDL_Color color);
@@ -81,4 +82,4 @@ private:
     void drawArrow(int x1, int y1, int x2, int y2, int x3, int y3, SDL_Color color);
 };
 
-#endif // RENDERER_H
+#endif // RENDERER_Hendif // RENDERER_H

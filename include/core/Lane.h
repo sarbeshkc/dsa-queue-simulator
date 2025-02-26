@@ -1,7 +1,7 @@
 #ifndef LANE_H
 #define LANE_H
 
-#include <queue>
+#include <vector>
 #include <mutex>
 #include <string>
 #include "core/Vehicle.h"
@@ -29,7 +29,8 @@ public:
     std::string getName() const;
 
     // Iterate through vehicles for rendering
-    const std::vector<Vehicle*>& getVehicles() const;
+    std::vector<Vehicle*>& getVehicles() { return vehicles; }
+    const std::vector<Vehicle*>& getVehicles() const { return vehicles; }
 
 private:
     char laneId;               // A, B, C, or D
@@ -38,9 +39,6 @@ private:
     int priority;              // Current priority (higher means served first)
     std::vector<Vehicle*> vehicles; // Storage for vehicles in the lane
     mutable std::mutex mutex;  // For thread safety
-
-    // Update vehicle positions based on traffic light state
-    void updateVehiclePositions();
 };
 
-#endif // LANE_H
+#endif // LANE_Hendif // LANE_H

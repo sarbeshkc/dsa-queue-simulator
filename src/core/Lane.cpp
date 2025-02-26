@@ -1,6 +1,5 @@
 #include "core/Lane.h"
 #include "utils/DebugLogger.h"
-#include <algorithm>
 #include <sstream>
 
 Lane::Lane(char laneId, int laneNumber)
@@ -9,78 +8,93 @@ Lane::Lane(char laneId, int laneNumber)
       isPriority(laneId == 'A' && laneNumber == 2), // AL2 is the priority lane
       priority(0) {
 
-    std::stringstream ss;
-    ss << "Created lane " << laneId << laneNumber << " (Priority: " << (isPriority ? "Yes" : "No") << ")";
-    DebugLogger::log(ss.str());
+    std::ostringstream oss;
+    oss << "Created lane " << laneId << laneNumber;
+    DebugLogger::log(oss.str());
 }
 
 Lane::~Lane() {
-    // Lock the mutex to ensure thread safety when cleaning up
     std::lock_guard<std::mutex> lock(mutex);
-    for (auto vehicle : vehicles) {
+    // Clean up vehicles
+    for (auto* vehicle : vehicles) {
         delete vehicle;
     }
     vehicles.clear();
 }
 
 void Lane::enqueue(Vehicle* vehicle) {
-    // Lock the mutex to ensure thread safety
-    std::lock_guard<std::mutex> lock(mutex);
-
-    // Set vehicle's lane properties
-    vehicle->setLane(laneId);
-    vehicle->setLaneNumber(laneNumber);
-
-    // Initialize animation position based on lane
-    if (laneId == 'A') {
-        vehicle->setAnimationPos(0.0f); // Top of screen
-    } else if (laneId == 'B') {
-        vehicle->setAnimationPos(800.0f); // Bottom of screen (assuming 800 height)
-    } else if (laneId == 'C') {
-        vehicle->setAnimationPos(800.0f); // Right of screen (assuming 800 width)
-    } else if (laneId == 'D') {
-        vehicle->setAnimationPos(0.0f); // Left of screen
+    int currentCount;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        // Add the vehicle to the queue
+        vehicles.push_back(vehicle);
+        currentCount = vehicles.size();
     }
 
-    vehicles.push_back(vehicle);
+    // Log the action
+    std::ostringstream oss;
+    oss << "Vehicle " << vehicle->getId() << " added to lane " << laneId << laneNumber;
+    DebugLogger::log(oss.str());
 
-    std::stringstream ss;
-    ss << "Enqueued vehicle " << vehicle->getId() << " to lane " << laneId << laneNumber
-       << " (Queue size: " << vehicles.size() << ")";
-    DebugLogger::log(ss.str());
-
-    // Update priority if this is a priority lane
+    // Update priority if this is the priority lane
     if (isPriority) {
-        updatePriority();
+        if (currentCount > 10) {
+            priority = 100; // High priority
+            std::ostringstream oss;
+            oss << "Lane " << laneId << laneNumber
+                << " priority increased (vehicles: " << currentCount << ")";
+            DebugLogger::log(oss.str());
+        }
+        else if (currentCount < 5) {
+            priority = 0; // Normal priority
+            std::ostringstream oss;
+            oss << "Lane " << laneId << laneNumber
+                << " priority reset to normal (vehicles: " << currentCount << ")";
+            DebugLogger::log(oss.str());
+        }
     }
 }
 
 Vehicle* Lane::dequeue() {
-    // Lock the mutex to ensure thread safety
-    std::lock_guard<std::mutex> lock(mutex);
+    Vehicle* vehicle = nullptr;
+    int currentCount = 0;
 
-    if (vehicles.empty()) {
-        return nullptr;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        if (vehicles.empty()) {
+            return nullptr;
+        }
+
+        // Remove the first vehicle (FIFO queue behavior)
+        vehicle = vehicles.front();
+        vehicles.erase(vehicles.begin());
+        currentCount = vehicles.size();
     }
 
-    Vehicle* vehicle = vehicles.front();
-    vehicles.erase(vehicles.begin());
+    // Log the action
+    std::ostringstream oss;
+    oss << "Vehicle " << vehicle->getId() << " removed from lane " << laneId << laneNumber;
+    DebugLogger::log(oss.str());
 
-    std::stringstream ss;
-    ss << "Dequeued vehicle " << vehicle->getId() << " from lane " << laneId << laneNumber
-       << " (Queue size: " << vehicles.size() << ")";
-    DebugLogger::log(ss.str());
-
-    // Update priority if this is a priority lane
+    // Update priority if this is the priority lane
     if (isPriority) {
-        updatePriority();
+        if (currentCount > 10) {
+            priority = 100; // High priority
+        }
+        else if (currentCount < 5) {
+            priority = 0; // Normal priority
+            std::ostringstream oss;
+            oss << "Lane " << laneId << laneNumber
+                << " priority reset to normal (vehicles: " << currentCount << ")";
+            DebugLogger::log(oss.str());
+        }
     }
 
     return vehicle;
 }
 
 Vehicle* Lane::peek() const {
-    // Lock the mutex to ensure thread safety
     std::lock_guard<std::mutex> lock(mutex);
 
     if (vehicles.empty()) {
@@ -91,53 +105,47 @@ Vehicle* Lane::peek() const {
 }
 
 bool Lane::isEmpty() const {
-    // Lock the mutex to ensure thread safety
     std::lock_guard<std::mutex> lock(mutex);
     return vehicles.empty();
 }
 
 int Lane::getVehicleCount() const {
-    // Lock the mutex to ensure thread safety
     std::lock_guard<std::mutex> lock(mutex);
     return vehicles.size();
 }
 
 int Lane::getPriority() const {
-    // Priority doesn't need a lock as it's an atomic read
     return priority;
 }
 
 void Lane::updatePriority() {
-    // Use a separate lock for priority update to avoid deadlocks
-    std::lock_guard<std::mutex> lock(mutex);
-
-    // For AL2 (priority lane), priority is based on the number of vehicles
-    if (isPriority) {
-        int count = vehicles.size();  // Already locked by mutex
-
-        // If more than 10 vehicles, give high priority
-        if (count > 10) {
-            priority = 100 + count; // High priority value
-
-            std::stringstream ss;
-            ss << "Lane " << laneId << laneNumber << " priority increased to " << priority
-               << " (Vehicle count: " << count << ")";
-            DebugLogger::log(ss.str());
-        }
-        // If less than 5 vehicles, reset to normal priority
-        else if (count < 5) {
-            priority = 0;
-
-            std::stringstream ss;
-            ss << "Lane " << laneId << laneNumber << " priority reset to normal"
-               << " (Vehicle count: " << count << ")";
-            DebugLogger::log(ss.str());
-        }
-        // Between 5-10, maintain current state (hysteresis)
+    int count;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        count = vehicles.size();
     }
-    // For non-priority lanes, priority remains 0
-    else {
-        priority = 0;
+
+    // Update priority based on vehicle count for AL2 lane
+    if (isPriority) {
+        if (count > 10) { // PRIORITY_THRESHOLD_HIGH (more than 10 vehicles)
+            if (priority != 100) { // Only log if status changed
+                priority = 100; // High priority
+                std::ostringstream oss;
+                oss << "Lane " << laneId << laneNumber
+                    << " priority increased (vehicles: " << count << " > 10)";
+                DebugLogger::log(oss.str());
+            }
+        }
+        else if (count < 5) { // PRIORITY_THRESHOLD_LOW (less than 5 vehicles)
+            if (priority != 0) { // Only log if status changed
+                priority = 0; // Normal priority
+                std::ostringstream oss;
+                oss << "Lane " << laneId << laneNumber
+                    << " priority reset to normal (vehicles: " << count << " < 5)";
+                DebugLogger::log(oss.str());
+            }
+        }
+        // Between 5-10 vehicles, maintain current priority state (hysteresis)
     }
 }
 
@@ -154,14 +162,8 @@ int Lane::getLaneNumber() const {
 }
 
 std::string Lane::getName() const {
-    std::stringstream ss;
-    ss << laneId << laneNumber;
-    return ss.str();
-}
-
-const std::vector<Vehicle*>& Lane::getVehicles() const {
-    // Note: This method returns a reference to the vector.
-    // Callers should be careful not to modify it directly.
-    // The mutex is not locked here to avoid deadlocks when iterating.
-    return vehicles;
+    std::string name;
+    name += laneId;
+    name += std::to_string(laneNumber);
+    return name;
 }

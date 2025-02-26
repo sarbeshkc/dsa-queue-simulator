@@ -6,6 +6,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <SDL3/SDL.h>
 
 #include "core/Lane.h"
 #include "core/TrafficLight.h"
@@ -43,6 +44,9 @@ public:
     // Get statistics for display
     std::string getStatistics() const;
 
+    // Find lane by ID and number - making this public for rendering
+    Lane* findLane(char laneId, int laneNumber) const;
+
 private:
     // Lanes for each road
     std::vector<Lane*> lanes;
@@ -74,12 +78,6 @@ private:
 
     // Check for vehicles leaving the simulation
     void checkVehicleBoundaries();
-
-    // Handle vehicle turning logic
-    void handleVehicleTurning(Vehicle* vehicle);
-
-    // Find lane by ID and number
-    Lane* findLane(char laneId, int laneNumber) const;
 };
 
 #endif // TRAFFIC_MANAGER_H

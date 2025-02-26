@@ -4,6 +4,34 @@
 #include <string>
 #include <SDL3/SDL.h>
 #include <ctime>
+#include <vector>
+
+// Define all enums here instead of just forward declaring them
+enum class Destination {
+    STRAIGHT,
+    LEFT,
+    RIGHT
+};
+
+enum class Direction {
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT
+};
+
+enum class VehicleState {
+    APPROACHING,
+    IN_INTERSECTION,
+    EXITING,
+    EXITED
+};
+
+// Point structure for waypoints
+struct Point {
+    float x;
+    float y;
+};
 
 class Vehicle {
 public:
@@ -41,6 +69,12 @@ public:
     void calculateTurnPath(float startX, float startY, float controlX, float controlY,
                           float endX, float endY, float progress);
 
+    // Initialize waypoints for movement path
+    void initializeWaypoints();
+
+    // Check if vehicle has exited the screen
+    bool hasExited() const { return state == VehicleState::EXITED; }
+
 private:
     std::string id;
     char lane;
@@ -55,12 +89,25 @@ private:
     float turnPosX;
     float turnPosY;
 
-    // Constants
-    static constexpr float VEHICLE_LENGTH = 20.0f;
-    static constexpr float VEHICLE_WIDTH = 10.0f;
-    static constexpr float VEHICLE_GAP = 15.0f;
-    static constexpr float TURN_SPEED = 0.0008f;
-    static constexpr float MOVE_SPEED = 0.2f;
+    // Destination (where the vehicle is heading)
+    Destination destination;
+
+    // Current direction of travel
+    Direction currentDirection;
+
+    // Vehicle state
+    VehicleState state;
+
+    // Waypoints for movement
+    std::vector<Point> waypoints;
+    size_t currentWaypoint;
+
+    // Constants - made public as static members
+    static constexpr float VEHICLE_LENGTH = 15.0f;
+    static constexpr float VEHICLE_WIDTH = 8.0f;
+    static constexpr float VEHICLE_GAP = 10.0f;
+    static constexpr float TURN_SPEED = 0.001f;
+    static constexpr float MOVE_SPEED = 0.02f;
 
     // Helper methods
     float easeInOutQuad(float t) const;
