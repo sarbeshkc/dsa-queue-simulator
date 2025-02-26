@@ -1,3 +1,4 @@
+// FILE: include/c// FILE: include/core/Vehicle.h
 #ifndef VEHICLE_H
 #define VEHICLE_H
 
@@ -5,6 +6,8 @@
 #include <SDL3/SDL.h>
 #include <ctime>
 #include <vector>
+#include <sstream>
+#include "utils/DebugLogger.h"
 
 // Define all enums here instead of just forward declaring them
 enum class Destination {
@@ -47,6 +50,10 @@ public:
     bool isEmergencyVehicle() const;
     time_t getArrivalTime() const;
 
+    // Destination control
+    void setDestination(Destination dest);
+    Destination getDestination() const;
+
     // Animation related
     float getAnimationPos() const;
     void setAnimationPos(float pos);
@@ -88,6 +95,7 @@ private:
     float turnProgress;
     float turnPosX;
     float turnPosY;
+    int queuePos; // Position in the queue for proper spacing
 
     // Destination (where the vehicle is heading)
     Destination destination;
@@ -102,15 +110,11 @@ private:
     std::vector<Point> waypoints;
     size_t currentWaypoint;
 
-    // Constants - made public as static members
-    static constexpr float VEHICLE_LENGTH = 15.0f;
-    static constexpr float VEHICLE_WIDTH = 8.0f;
-    static constexpr float VEHICLE_GAP = 10.0f;
-    static constexpr float TURN_SPEED = 0.001f;
-    static constexpr float MOVE_SPEED = 0.02f;
-
     // Helper methods
     float easeInOutQuad(float t) const;
+
+    // Helper for drawing triangles (SDL3 compatible)
+    void SDL_RenderFillTriangleF(SDL_Renderer* renderer, float x1, float y1, float x2, float y2, float x3, float y3);
 };
 
 #endif // VEHICLE_H

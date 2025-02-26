@@ -1,3 +1,4 @@
+// FILE: include/utils/PriorityQueue.h
 #ifndef PRIORITY_QUEUE_H
 #define PRIORITY_QUEUE_H
 
@@ -6,7 +7,7 @@
 #include <functional>
 #include <mutex>
 
-// A simple priority queue implementation for the traffic simulation
+// A priority queue implementation for the traffic simulation
 template<typename T>
 class PriorityQueue {
 public:
@@ -109,7 +110,7 @@ public:
         elements.clear();
     }
 
-    // Get all elements for iteration (e.g., for rendering)
+    // Get all elements in priority order
     std::vector<T> getAllElements() const {
         std::lock_guard<std::mutex> lock(mutex);
 
@@ -128,4 +129,4 @@ private:
     mutable std::mutex mutex;
 };
 
-#endif // PRIORITY_QUEUE_H
+#endif // PRIORITY_QUEUE_Hendif // PRIORITY_QUEUE_H

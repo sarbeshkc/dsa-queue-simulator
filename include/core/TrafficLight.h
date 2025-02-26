@@ -1,3 +1,4 @@
+// FILE: include/core/TrafficLight.h
 #ifndef TRAFFIC_LIGHT_H
 #define TRAFFIC_LIGHT_H
 
@@ -44,7 +45,6 @@ private:
 
     // Timing for the green and red states
     const int allRedDuration = 2000; // 2 seconds for all red
-    const int greenDuration = 3000;  // 3 seconds for green
 
     // Last state change time in milliseconds
     uint32_t lastStateChangeTime;
@@ -55,11 +55,8 @@ private:
     // Track when normal mode should resume (after priority mode drops to 5 vehicles)
     bool shouldResumeNormalMode;
 
-    // Calculate the appropriate next state considering priorities
-    State calculateNextState(const std::vector<Lane*>& lanes);
-
-    // Calculate duration based on vehicle count (|V| * t)
-    int calculateGreenDuration(int vehicleCount);
+    // Helper function to calculate average vehicle count
+    float calculateAverageVehicleCount(const std::vector<Lane*>& lanes);
 
     // Helper drawing functions
     void drawLightForA(SDL_Renderer* renderer, bool isRed);
@@ -68,4 +65,4 @@ private:
     void drawLightForD(SDL_Renderer* renderer, bool isRed);
 };
 
-#endif // TRAFFIC_LIGHT_H;
+#endif // TRAFFIC_LIGHT_H

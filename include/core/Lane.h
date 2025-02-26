@@ -1,10 +1,11 @@
+// FILE: include/core/Lane.h
 #ifndef LANE_H
 #define LANE_H
 
 #include <vector>
-#include <mutex>
 #include <string>
 #include "core/Vehicle.h"
+#include "utils/Queue.h"
 
 class Lane {
 public:
@@ -28,17 +29,15 @@ public:
     int getLaneNumber() const;
     std::string getName() const;
 
-    // Iterate through vehicles for rendering
-    std::vector<Vehicle*>& getVehicles() { return vehicles; }
-    const std::vector<Vehicle*>& getVehicles() const { return vehicles; }
+    // For iteration through vehicles (for rendering)
+    const std::vector<Vehicle*>& getVehicles() const;
 
 private:
     char laneId;               // A, B, C, or D
     int laneNumber;            // 1, 2, or 3
     bool isPriority;           // Is this a priority lane (AL2)
     int priority;              // Current priority (higher means served first)
-    std::vector<Vehicle*> vehicles; // Storage for vehicles in the lane
-    mutable std::mutex mutex;  // For thread safety
+    Queue<Vehicle*> vehicleQueue; // Queue for vehicles in the lane
 };
 
-#endif // LANE_Hendif // LANE_H
+#endif // LANE_H

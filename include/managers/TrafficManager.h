@@ -1,3 +1,4 @@
+// FILE: include/managers/TrafficManager.h
 #ifndef TRAFFIC_MANAGER_H
 #define TRAFFIC_MANAGER_H
 
@@ -11,6 +12,7 @@
 #include "core/Lane.h"
 #include "core/TrafficLight.h"
 #include "managers/FileHandler.h"
+#include "utils/PriorityQueue.h"
 
 class TrafficManager {
 public:
@@ -26,7 +28,7 @@ public:
     // Stop the manager
     void stop();
 
-    // Update the traffic state - now does file checking and priority updates
+    // Update the traffic state
     void update(uint32_t delta);
 
     // Get the lanes for rendering
@@ -44,12 +46,15 @@ public:
     // Get statistics for display
     std::string getStatistics() const;
 
-    // Find lane by ID and number - making this public for rendering
+    // Find lane by ID and number
     Lane* findLane(char laneId, int laneNumber) const;
 
 private:
     // Lanes for each road
     std::vector<Lane*> lanes;
+
+    // Priority queue for lane management
+    PriorityQueue<Lane*> lanePriorityQueue;
 
     // Traffic light
     TrafficLight* trafficLight;
@@ -64,10 +69,10 @@ private:
     uint32_t lastFileCheckTime;
     uint32_t lastPriorityUpdateTime;
 
-    // Read vehicles from files - now called directly from update()
+    // Read vehicles from files
     void readVehicles();
 
-    // Update lane priorities - now called directly from update()
+    // Update lane priorities
     void updatePriorities();
 
     // Add a vehicle to the appropriate lane

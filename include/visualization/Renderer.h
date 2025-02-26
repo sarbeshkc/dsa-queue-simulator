@@ -1,3 +1,4 @@
+// FILE: include/visualization/Renderer.h
 #ifndef RENDERER_H
 #define RENDERER_H
 
@@ -5,9 +6,9 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include "core/Vehicle.h" // Add this to include Direction enum
 
 class Lane;
-class Vehicle;
 class TrafficLight;
 class TrafficManager;
 
@@ -67,7 +68,6 @@ private:
     void drawDebugOverlay();
     void drawLaneLabels();
     void drawStatistics();
-    void drawQueueLengthIndicators(); // Added function declaration
 
     // Text rendering (simplified without TTF)
     void drawText(const std::string& text, int x, int y, SDL_Color color);
@@ -80,6 +80,9 @@ private:
 
     // Helper to draw a filled road arrow
     void drawArrow(int x1, int y1, int x2, int y2, int x3, int y3, SDL_Color color);
+
+    // Helper to draw a direction arrow - this declaration was missing
+    void drawDirectionArrow(int x, int y, Direction dir, SDL_Color color);
 };
 
-#endif // RENDERER_Hendif // RENDERER_H
+#endif // RENDERER_Hendif // RENDERER_Hendif // RENDERER_Hendif // RENDERER_H

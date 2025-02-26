@@ -1,3 +1,4 @@
+// FILE: include/core/Constants.h
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
@@ -17,9 +18,9 @@ namespace Constants {
     constexpr int ARROW_SIZE = 15;
 
     // Vehicle settings
-    constexpr int MAX_VEHICLE_ID = 20;
-    constexpr float VEHICLE_LENGTH = 20.0f;
-    constexpr float VEHICLE_WIDTH = 10.0f;
+    constexpr int MAX_VEHICLE_ID = 9999;
+    constexpr float VEHICLE_LENGTH = 12.0f;
+    constexpr float VEHICLE_WIDTH = 6.0f;
     constexpr float VEHICLE_GAP = 15.0f;
     constexpr float TURN_DURATION = 1500.0f;
     constexpr float BEZIER_CONTROL_OFFSET = 80.0f;
@@ -28,7 +29,7 @@ namespace Constants {
 
     // Traffic light settings
     constexpr int ALL_RED_DURATION = 2000; // 2 seconds
-    constexpr int GREEN_DURATION = 3000;   // 3 seconds
+    constexpr int GREEN_DURATION_BASE = 3000;   // 3 seconds
 
     // Queue settings
     constexpr int MAX_QUEUE_SIZE = 100;
@@ -40,20 +41,19 @@ namespace Constants {
     // File paths
     const std::string DATA_PATH = "data/lanes";
     const std::string LOG_FILE = "traffic_simulator.log";
-    const std::string VEHICLE_FILE = "vehicles.data";
-    const std::string FONT_PATH = "/usr/share/fonts/TTF/DejaVuSans.ttf";
-    const std::string CAR_TEXTURE_PATH = "assets/car.jpg";
 
     // Colors
     constexpr SDL_Color ROAD_COLOR = {50, 50, 50, 255};
     constexpr SDL_Color LANE_MARKER_COLOR = {255, 255, 255, 255};
+    constexpr SDL_Color YELLOW_MARKER_COLOR = {255, 255, 0, 255};
     constexpr SDL_Color RED_LIGHT_COLOR = {255, 0, 0, 255};
-    constexpr SDL_Color GREEN_LIGHT_COLOR = {11, 156, 50, 255};
+    constexpr SDL_Color GREEN_LIGHT_COLOR = {0, 255, 0, 255};
     constexpr SDL_Color NORMAL_VEHICLE_COLOR = {0, 0, 255, 255};
     constexpr SDL_Color EMERGENCY_VEHICLE_COLOR = {255, 0, 0, 255};
+    constexpr SDL_Color PRIORITY_VEHICLE_COLOR = {255, 140, 0, 255}; // Orange for priority lane
+    constexpr SDL_Color FREE_LANE_VEHICLE_COLOR = {0, 220, 60, 255}; // Green for free lane
     constexpr SDL_Color PRIORITY_INDICATOR_COLOR = {255, 165, 0, 255};
-    constexpr SDL_Color TEXT_COLOR = {0, 0, 0, 255};
-    constexpr SDL_Color DEBUG_TEXT_COLOR = {255, 255, 255, 255};
+    constexpr SDL_Color TEXT_COLOR = {255, 255, 255, 255};
     constexpr SDL_Color DEBUG_BACKGROUND_COLOR = {0, 0, 0, 128};
 }
 

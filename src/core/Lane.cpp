@@ -1,6 +1,8 @@
+// FILE: src/core/Lane.cpp
 #include "core/Lane.h"
 #include "utils/DebugLogger.h"
 #include <sstream>
+#include "core/Constants.h"
 
 Lane::Lane(char laneId, int laneNumber)
     : laneId(laneId),
@@ -14,22 +16,21 @@ Lane::Lane(char laneId, int laneNumber)
 }
 
 Lane::~Lane() {
-    std::lock_guard<std::mutex> lock(mutex);
     // Clean up vehicles
-    for (auto* vehicle : vehicles) {
+    while (!vehicleQueue.isEmpty()) {
+        Vehicle* vehicle = vehicleQueue.dequeue();
         delete vehicle;
     }
-    vehicles.clear();
 }
 
 void Lane::enqueue(Vehicle* vehicle) {
-    int currentCount;
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        // Add the vehicle to the queue
-        vehicles.push_back(vehicle);
-        currentCount = vehicles.size();
+    if (!vehicle) {
+        DebugLogger::log("Attempted to enqueue null vehicle", DebugLogger::LogLevel::ERROR);
+        return;
     }
+
+    vehicleQueue.enqueue(vehicle);
+    int currentCount = vehicleQueue.size();
 
     // Log the action
     std::ostringstream oss;
@@ -38,39 +39,30 @@ void Lane::enqueue(Vehicle* vehicle) {
 
     // Update priority if this is the priority lane
     if (isPriority) {
-        if (currentCount > 10) {
+        if (currentCount > Constants::PRIORITY_THRESHOLD_HIGH) {
             priority = 100; // High priority
-            std::ostringstream oss;
-            oss << "Lane " << laneId << laneNumber
+            std::ostringstream priorityOss;
+            priorityOss << "Lane " << laneId << laneNumber
                 << " priority increased (vehicles: " << currentCount << ")";
-            DebugLogger::log(oss.str());
+            DebugLogger::log(priorityOss.str());
         }
-        else if (currentCount < 5) {
+        else if (currentCount < Constants::PRIORITY_THRESHOLD_LOW) {
             priority = 0; // Normal priority
-            std::ostringstream oss;
-            oss << "Lane " << laneId << laneNumber
+            std::ostringstream priorityOss;
+            priorityOss << "Lane " << laneId << laneNumber
                 << " priority reset to normal (vehicles: " << currentCount << ")";
-            DebugLogger::log(oss.str());
+            DebugLogger::log(priorityOss.str());
         }
     }
 }
 
 Vehicle* Lane::dequeue() {
-    Vehicle* vehicle = nullptr;
-    int currentCount = 0;
-
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-
-        if (vehicles.empty()) {
-            return nullptr;
-        }
-
-        // Remove the first vehicle (FIFO queue behavior)
-        vehicle = vehicles.front();
-        vehicles.erase(vehicles.begin());
-        currentCount = vehicles.size();
+    if (vehicleQueue.isEmpty()) {
+        return nullptr;
     }
+
+    Vehicle* vehicle = vehicleQueue.dequeue();
+    int currentCount = vehicleQueue.size();
 
     // Log the action
     std::ostringstream oss;
@@ -79,15 +71,12 @@ Vehicle* Lane::dequeue() {
 
     // Update priority if this is the priority lane
     if (isPriority) {
-        if (currentCount > 10) {
-            priority = 100; // High priority
-        }
-        else if (currentCount < 5) {
+        if (currentCount < Constants::PRIORITY_THRESHOLD_LOW && priority > 0) {
             priority = 0; // Normal priority
-            std::ostringstream oss;
-            oss << "Lane " << laneId << laneNumber
+            std::ostringstream priorityOss;
+            priorityOss << "Lane " << laneId << laneNumber
                 << " priority reset to normal (vehicles: " << currentCount << ")";
-            DebugLogger::log(oss.str());
+            DebugLogger::log(priorityOss.str());
         }
     }
 
@@ -95,23 +84,24 @@ Vehicle* Lane::dequeue() {
 }
 
 Vehicle* Lane::peek() const {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    if (vehicles.empty()) {
+    if (vehicleQueue.isEmpty()) {
         return nullptr;
     }
 
-    return vehicles.front();
+    return vehicleQueue.peek();
 }
 
 bool Lane::isEmpty() const {
-    std::lock_guard<std::mutex> lock(mutex);
-    return vehicles.empty();
+    return vehicleQueue.isEmpty();
 }
 
 int Lane::getVehicleCount() const {
-    std::lock_guard<std::mutex> lock(mutex);
-    return vehicles.size();
+    return vehicleQueue.size();
+}
+
+const std::vector<Vehicle*>& Lane::getVehicles() const {
+    // Get all elements from the queue for rendering
+    return vehicleQueue.getAllElements();
 }
 
 int Lane::getPriority() const {
@@ -119,33 +109,24 @@ int Lane::getPriority() const {
 }
 
 void Lane::updatePriority() {
-    int count;
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        count = vehicles.size();
-    }
+    int count = vehicleQueue.size();
 
     // Update priority based on vehicle count for AL2 lane
     if (isPriority) {
-        if (count > 10) { // PRIORITY_THRESHOLD_HIGH (more than 10 vehicles)
-            if (priority != 100) { // Only log if status changed
-                priority = 100; // High priority
-                std::ostringstream oss;
-                oss << "Lane " << laneId << laneNumber
-                    << " priority increased (vehicles: " << count << " > 10)";
-                DebugLogger::log(oss.str());
-            }
+        if (count > Constants::PRIORITY_THRESHOLD_HIGH && priority == 0) {
+            priority = 100; // High priority
+            std::ostringstream oss;
+            oss << "Lane " << laneId << laneNumber
+                << " priority increased (vehicles: " << count << ")";
+            DebugLogger::log(oss.str());
         }
-        else if (count < 5) { // PRIORITY_THRESHOLD_LOW (less than 5 vehicles)
-            if (priority != 0) { // Only log if status changed
-                priority = 0; // Normal priority
-                std::ostringstream oss;
-                oss << "Lane " << laneId << laneNumber
-                    << " priority reset to normal (vehicles: " << count << " < 5)";
-                DebugLogger::log(oss.str());
-            }
+        else if (count < Constants::PRIORITY_THRESHOLD_LOW && priority > 0) {
+            priority = 0; // Normal priority
+            std::ostringstream oss;
+            oss << "Lane " << laneId << laneNumber
+                << " priority reset to normal (vehicles: " << count << ")";
+            DebugLogger::log(oss.str());
         }
-        // Between 5-10 vehicles, maintain current priority state (hysteresis)
     }
 }
 

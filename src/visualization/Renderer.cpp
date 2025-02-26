@@ -1,22 +1,15 @@
+// FILE: src/visualization/Renderer.cpp
 #include "visualization/Renderer.h"
 #include "core/Lane.h"
 #include "core/Vehicle.h"
 #include "core/TrafficLight.h"
 #include "managers/TrafficManager.h"
 #include "utils/DebugLogger.h"
+#include "core/Constants.h"
 
 #include <sstream>
 #include <algorithm>
 #include <cmath>
-
-// Constants
-const int ROAD_WIDTH = 150;
-const int LANE_WIDTH = 50;
-const SDL_Color ROAD_COLOR = {50, 50, 50, 255};
-const SDL_Color LANE_MARKER_COLOR = {255, 255, 255, 255};
-const SDL_Color INTERSECTION_COLOR = {70, 70, 70, 255};
-const SDL_Color PRIORITY_INDICATOR_COLOR = {255, 165, 0, 255};
-const SDL_Color TEXT_COLOR = {0, 0, 0, 255};
 
 Renderer::Renderer()
     : window(nullptr),
@@ -170,7 +163,7 @@ void Renderer::renderFrame() {
     }
 
     // Clear screen
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255); // Darker background
     SDL_RenderClear(renderer);
 
     // Draw roads and lanes
@@ -181,6 +174,9 @@ void Renderer::renderFrame() {
 
     // Draw vehicles
     drawVehicles();
+
+    // Draw lane labels and direction indicators
+    drawLaneLabels();
 
     // Draw debug overlay if enabled
     if (showDebugOverlay) {
@@ -194,14 +190,13 @@ void Renderer::renderFrame() {
     lastFrameTime = SDL_GetTicks();
 }
 
-// In Renderer.cpp - fixed drawRoadsAndLanes implementation
-void Renderer::drawRoadsAndLanes() {
-    // Define constants for readability
-    const int ROAD_WIDTH = 150;
-    const int LANE_WIDTH = 50;
 
-    // Draw intersection (dark gray)
-    SDL_SetRenderDrawColor(renderer, 70, 70, 70, 255); // INTERSECTION_COLOR
+void Renderer::drawRoadsAndLanes() {
+    const int ROAD_WIDTH = Constants::ROAD_WIDTH;
+    const int LANE_WIDTH = Constants::LANE_WIDTH;
+
+    // Draw dark gray background for the whole road network
+    SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
     SDL_FRect intersectionRect = {
         static_cast<float>(windowWidth/2 - ROAD_WIDTH/2),
         static_cast<float>(windowHeight/2 - ROAD_WIDTH/2),
@@ -211,7 +206,6 @@ void Renderer::drawRoadsAndLanes() {
     SDL_RenderFillRect(renderer, &intersectionRect);
 
     // Draw horizontal road (dark gray)
-    SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // ROAD_COLOR
     SDL_FRect horizontalRoad = {
         0, static_cast<float>(windowHeight/2 - ROAD_WIDTH/2),
         static_cast<float>(windowWidth), static_cast<float>(ROAD_WIDTH)
@@ -225,334 +219,412 @@ void Renderer::drawRoadsAndLanes() {
     };
     SDL_RenderFillRect(renderer, &verticalRoad);
 
-    // Highlight free lanes (lane 3) with a different color
-    SDL_SetRenderDrawColor(renderer, 60, 70, 60, 255); // Slightly different color for lane 3
+    // Draw clear lane dividers for all roads
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White for lane dividers
 
-    // A3 - Free lane
-    SDL_FRect a3Lane = {
-        static_cast<float>(windowWidth/2 + LANE_WIDTH),
-        0,
-        static_cast<float>(LANE_WIDTH),
-        static_cast<float>(windowHeight/2 - ROAD_WIDTH/2)
+    // Draw road labels - A, B, C, D for better orientation
+    int textSize = 16;
+
+    // Road A (North)
+    drawText("A (North)", windowWidth/2 - 40, 10, {255, 255, 255, 255});
+
+    // Road B (East)
+    drawText("B (East)", windowWidth - 80, windowHeight/2 - 10, {255, 255, 255, 255});
+
+    // Road C (South)
+    drawText("C (South)", windowWidth/2 - 40, windowHeight - 30, {255, 255, 255, 255});
+
+    // Road D (West)
+    drawText("D (West)", 10, windowHeight/2 - 10, {255, 255, 255, 255});
+
+    // Horizontal lane dividers (3 lanes per road)
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+    // Draw center double-yellow line
+    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Yellow
+
+    // Horizontal center double line
+    SDL_FRect hCenterLine1 = {
+        0, static_cast<float>(windowHeight/2 - 1),
+        static_cast<float>(windowWidth), 2.0f
     };
-    SDL_RenderFillRect(renderer, &a3Lane);
-
-    // B3 - Free lane
-    SDL_FRect b3Lane = {
-        static_cast<float>(windowWidth/2 - 2*LANE_WIDTH),
-        static_cast<float>(windowHeight/2 + ROAD_WIDTH/2),
-        static_cast<float>(LANE_WIDTH),
-        static_cast<float>(windowHeight/2)
+    SDL_FRect hCenterLine2 = {
+        0, static_cast<float>(windowHeight/2 - 5),
+        static_cast<float>(windowWidth), 2.0f
     };
-    SDL_RenderFillRect(renderer, &b3Lane);
+    SDL_RenderFillRect(renderer, &hCenterLine1);
+    SDL_RenderFillRect(renderer, &hCenterLine2);
 
-    // C3 - Free lane
-    SDL_FRect c3Lane = {
-        static_cast<float>(windowWidth/2 + ROAD_WIDTH/2),
-        static_cast<float>(windowHeight/2 + LANE_WIDTH),
-        static_cast<float>(windowWidth/2 - ROAD_WIDTH/2),
-        static_cast<float>(LANE_WIDTH)
+    // Vertical center double line
+    SDL_FRect vCenterLine1 = {
+        static_cast<float>(windowWidth/2 - 1), 0,
+        2.0f, static_cast<float>(windowHeight)
     };
-    SDL_RenderFillRect(renderer, &c3Lane);
-
-    // D3 - Free lane
-    SDL_FRect d3Lane = {
-        0,
-        static_cast<float>(windowHeight/2 - 2*LANE_WIDTH),
-        static_cast<float>(windowWidth/2 - ROAD_WIDTH/2),
-        static_cast<float>(LANE_WIDTH)
+    SDL_FRect vCenterLine2 = {
+        static_cast<float>(windowWidth/2 - 5), 0,
+        2.0f, static_cast<float>(windowHeight)
     };
-    SDL_RenderFillRect(renderer, &d3Lane);
+    SDL_RenderFillRect(renderer, &vCenterLine1);
+    SDL_RenderFillRect(renderer, &vCenterLine2);
 
-    // Highlight priority lane (AL2) if it has priority
-    if (trafficManager) {
-        Lane* al2Lane = trafficManager->findLane('A', 2);
-        if (al2Lane && al2Lane->getPriority() > 0) {
-            // Highlight AL2 lane with orange
-            SDL_SetRenderDrawColor(renderer, 255, 165, 0, 100); // Semi-transparent orange
-
-            SDL_FRect priorityLaneRect = {
-                static_cast<float>(windowWidth/2),
-                0,
-                static_cast<float>(LANE_WIDTH),
-                static_cast<float>(windowHeight/2 - ROAD_WIDTH/2)
-            };
-            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-            SDL_RenderFillRect(renderer, &priorityLaneRect);
-            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-        }
-    }
-
-    // Draw lane dividers (white dashed lines)
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // LANE_MARKER_COLOR
+    // Switch back to white for lane dividers
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 
     // Horizontal lane dividers
     for (int i = 1; i < 3; i++) {
-        int y = windowHeight/2 - ROAD_WIDTH/2 + i * LANE_WIDTH;
-        for (int x = 0; x < windowWidth; x += 30) {
-            if (x < windowWidth/2 - ROAD_WIDTH/2 || x > windowWidth/2 + ROAD_WIDTH/2) {
-                SDL_RenderLine(renderer, x, y, x + 15, y);
-            }
+        float y1 = windowHeight/2 - ROAD_WIDTH/2 + i * LANE_WIDTH;
+        float y2 = windowHeight/2 + i * LANE_WIDTH;
+
+        // Top road lanes (going down)
+        for (int x = 0; x < windowWidth/2 - ROAD_WIDTH/2; x += 30) {
+            SDL_RenderLine(renderer, x, y1, x + 15, y1);
+        }
+
+        // Bottom road lanes (going up)
+        for (int x = windowWidth/2 + ROAD_WIDTH/2; x < windowWidth; x += 30) {
+            SDL_RenderLine(renderer, x, y2, x + 15, y2);
         }
     }
 
     // Vertical lane dividers
     for (int i = 1; i < 3; i++) {
-        int x = windowWidth/2 - ROAD_WIDTH/2 + i * LANE_WIDTH;
-        for (int y = 0; y < windowHeight; y += 30) {
-            if (y < windowHeight/2 - ROAD_WIDTH/2 || y > windowHeight/2 + ROAD_WIDTH/2) {
-                SDL_RenderLine(renderer, x, y, x, y + 15);
-            }
+        float x1 = windowWidth/2 - ROAD_WIDTH/2 + i * LANE_WIDTH;
+        float x2 = windowWidth/2 + i * LANE_WIDTH;
+
+        // Left road lanes (going right)
+        for (int y = 0; y < windowHeight/2 - ROAD_WIDTH/2; y += 30) {
+            SDL_RenderLine(renderer, x1, y, x1, y + 15);
+        }
+
+        // Right road lanes (going left)
+        for (int y = windowHeight/2 + ROAD_WIDTH/2; y < windowHeight; y += 30) {
+            SDL_RenderLine(renderer, x2, y, x2, y + 15);
         }
     }
 
-    // Add queue length indicators for each lane
-    drawQueueLengthIndicators();
+    // Highlight lane types with subtle background colors
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    // Draw lane labels
-    drawLaneLabels();
+    // A2 (Priority Lane) - light orange highlight
+    if (trafficManager && trafficManager->isLanePrioritized('A', 2)) {
+        SDL_SetRenderDrawColor(renderer, 255, 165, 0, 80); // Semi-transparent orange
+        SDL_FRect priorityLane = {
+            static_cast<float>(windowWidth/2),
+            0,
+            static_cast<float>(LANE_WIDTH),
+            static_cast<float>(windowHeight/2 - ROAD_WIDTH/2)
+        };
+        SDL_RenderFillRect(renderer, &priorityLane);
+    }
+
+    // Free Lanes (L3) - light green highlights
+    SDL_SetRenderDrawColor(renderer, 0, 255, 0, 50); // Semi-transparent green
+
+    // A3 (North Road)
+    SDL_FRect freeALane = {
+        static_cast<float>(windowWidth/2 + LANE_WIDTH),
+        0,
+        static_cast<float>(LANE_WIDTH),
+        static_cast<float>(windowHeight/2 - ROAD_WIDTH/2)
+    };
+    SDL_RenderFillRect(renderer, &freeALane);
+
+    // B3 (East Road)
+    SDL_FRect freeBLane = {
+        static_cast<float>(windowWidth/2 + ROAD_WIDTH/2),
+        static_cast<float>(windowHeight/2 + LANE_WIDTH),
+        static_cast<float>(windowWidth - (windowWidth/2 + ROAD_WIDTH/2)),
+        static_cast<float>(LANE_WIDTH)
+    };
+    SDL_RenderFillRect(renderer, &freeBLane);
+
+    // C3 (South Road)
+    SDL_FRect freeCLane = {
+        static_cast<float>(windowWidth/2 - 2*LANE_WIDTH),
+        static_cast<float>(windowHeight/2 + ROAD_WIDTH/2),
+        static_cast<float>(LANE_WIDTH),
+        static_cast<float>(windowHeight - (windowHeight/2 + ROAD_WIDTH/2))
+    };
+    SDL_RenderFillRect(renderer, &freeCLane);
+
+    // D3 (West Road)
+    SDL_FRect freeDLane = {
+        0,
+        static_cast<float>(windowHeight/2 - 2*LANE_WIDTH),
+        static_cast<float>(windowWidth/2 - ROAD_WIDTH/2),
+        static_cast<float>(LANE_WIDTH)
+    };
+    SDL_RenderFillRect(renderer, &freeDLane);
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+
+    // Draw lane labels directly on the road
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+    // A Road (North) lane labels
+    drawText("A1", windowWidth/2 - LANE_WIDTH/2 - 10, windowHeight/4, {255, 255, 255, 255});
+    drawText("A2", windowWidth/2 + LANE_WIDTH/2 - 10, windowHeight/4, {255, 255, 255, 255});
+    drawText("A3", windowWidth/2 + LANE_WIDTH + LANE_WIDTH/2 - 10, windowHeight/4, {255, 255, 255, 255});
+
+    // B Road (East) lane labels
+    drawText("B1", 3*windowWidth/4, windowHeight/2 - LANE_WIDTH/2 - 10, {255, 255, 255, 255});
+    drawText("B2", 3*windowWidth/4, windowHeight/2 + LANE_WIDTH/2 - 10, {255, 255, 255, 255});
+    drawText("B3", 3*windowWidth/4, windowHeight/2 + LANE_WIDTH + LANE_WIDTH/2 - 10, {255, 255, 255, 255});
+
+    // C Road (South) lane labels
+    drawText("C1", windowWidth/2 + LANE_WIDTH/2 - 10, 3*windowHeight/4, {255, 255, 255, 255});
+    drawText("C2", windowWidth/2 - LANE_WIDTH/2 - 10, 3*windowHeight/4, {255, 255, 255, 255});
+    drawText("C3", windowWidth/2 - LANE_WIDTH - LANE_WIDTH/2 - 10, 3*windowHeight/4, {255, 255, 255, 255});
+
+    // D Road (West) lane labels
+    drawText("D1", windowWidth/4, windowHeight/2 + LANE_WIDTH/2 - 10, {255, 255, 255, 255});
+    drawText("D2", windowWidth/4, windowHeight/2 - LANE_WIDTH/2 - 10, {255, 255, 255, 255});
+    drawText("D3", windowWidth/4, windowHeight/2 - LANE_WIDTH - LANE_WIDTH/2 - 10, {255, 255, 255, 255});
+
+    // Draw small arrows indicating traffic direction for each lane
+    // North road (A) - traffic going down
+    drawDirectionArrow(windowWidth/2 - LANE_WIDTH/2, windowHeight/4, Direction::DOWN, {255, 255, 255, 255}); // A1
+    drawDirectionArrow(windowWidth/2 + LANE_WIDTH/2, windowHeight/4, Direction::DOWN, {255, 255, 255, 255}); // A2
+    drawDirectionArrow(windowWidth/2 + LANE_WIDTH + LANE_WIDTH/2, windowHeight/4, Direction::DOWN, {255, 255, 255, 255}); // A3
+
+    // East road (B) - traffic going left
+    drawDirectionArrow(3*windowWidth/4, windowHeight/2 - LANE_WIDTH/2, Direction::LEFT, {255, 255, 255, 255}); // B1
+    drawDirectionArrow(3*windowWidth/4, windowHeight/2 + LANE_WIDTH/2, Direction::LEFT, {255, 255, 255, 255}); // B2
+    drawDirectionArrow(3*windowWidth/4, windowHeight/2 + LANE_WIDTH + LANE_WIDTH/2, Direction::LEFT, {255, 255, 255, 255}); // B3
+
+    // South road (C) - traffic going up
+    drawDirectionArrow(windowWidth/2 + LANE_WIDTH/2, 3*windowHeight/4, Direction::UP, {255, 255, 255, 255}); // C1
+    drawDirectionArrow(windowWidth/2 - LANE_WIDTH/2, 3*windowHeight/4, Direction::UP, {255, 255, 255, 255}); // C2
+    drawDirectionArrow(windowWidth/2 - LANE_WIDTH - LANE_WIDTH/2, 3*windowHeight/4, Direction::UP, {255, 255, 255, 255}); // C3
+
+    // West road (D) - traffic going right
+    drawDirectionArrow(windowWidth/4, windowHeight/2 + LANE_WIDTH/2, Direction::RIGHT, {255, 255, 255, 255}); // D1
+    drawDirectionArrow(windowWidth/4, windowHeight/2 - LANE_WIDTH/2, Direction::RIGHT, {255, 255, 255, 255}); // D2
+    drawDirectionArrow(windowWidth/4, windowHeight/2 - LANE_WIDTH - LANE_WIDTH/2, Direction::RIGHT, {255, 255, 255, 255}); // D3
+
+    // Draw stop lines at intersection
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+    // Top stop line (A road)
+    SDL_FRect topStop = {
+        static_cast<float>(windowWidth/2 - ROAD_WIDTH/2),
+        static_cast<float>(windowHeight/2 - ROAD_WIDTH/2 - 4),
+        static_cast<float>(ROAD_WIDTH),
+        4.0f
+    };
+    SDL_RenderFillRect(renderer, &topStop);
+
+    // Bottom stop line (C road)
+    SDL_FRect bottomStop = {
+        static_cast<float>(windowWidth/2 - ROAD_WIDTH/2),
+        static_cast<float>(windowHeight/2 + ROAD_WIDTH/2),
+        static_cast<float>(ROAD_WIDTH),
+        4.0f
+    };
+    SDL_RenderFillRect(renderer, &bottomStop);
+
+    // Left stop line (D road)
+    SDL_FRect leftStop = {
+        static_cast<float>(windowWidth/2 - ROAD_WIDTH/2 - 4),
+        static_cast<float>(windowHeight/2 - ROAD_WIDTH/2),
+        4.0f,
+        static_cast<float>(ROAD_WIDTH)
+    };
+    SDL_RenderFillRect(renderer, &leftStop);
+
+    // Right stop line (B road)
+    SDL_FRect rightStop = {
+        static_cast<float>(windowWidth/2 + ROAD_WIDTH/2),
+        static_cast<float>(windowHeight/2 - ROAD_WIDTH/2),
+        4.0f,
+        static_cast<float>(ROAD_WIDTH)
+    };
+    SDL_RenderFillRect(renderer, &rightStop);
 }
 
 
 
-// In Renderer.cpp - queue length indicators implementation
-void Renderer::drawQueueLengthIndicators() {
-    if (!trafficManager) return;
+// Helper method to draw direction arrows
+// FILE: src/visualization/Renderer.cpp
+// Implementation of drawDirectionArrow method
 
-    // For each lane, draw a colored bar showing queue length
-    for (auto* lane : trafficManager->getLanes()) {
-        int count = lane->getVehicleCount();
-        char laneId = lane->getLaneId();
-        int laneNum = lane->getLaneNumber();
+// FILE: src/visualization/Renderer.cpp
+// Corrected implementation of drawDirectionArrow method
 
-        // Skip lane 1 (output lanes)
-        if (laneNum == 1) continue;
+void Renderer::drawDirectionArrow(int x, int y, Direction dir, SDL_Color color) {
+    SDL_SetRenderDrawColor(this->renderer, color.r, color.g, color.b, color.a);
 
-        // Determine color based on lane
-        SDL_Color color;
+    const int arrowSize = 12;
 
-        if (laneId == 'A' && laneNum == 2) {
-            // AL2 - priority lane
-            if (lane->getPriority() > 0) {
-                color = {255, 140, 0, 255}; // Orange for priority
-            } else {
-                color = {220, 180, 0, 255}; // Yellow-gold for normal
-            }
-        } else if (laneNum == 3) {
-            // Free lanes
-            color = {0, 180, 0, 255}; // Green
-        } else {
-            // Normal lanes
-            color = {0, 120, 220, 255}; // Blue
-        }
+    SDL_FPoint points[3];
 
-        // Determine bar position based on lane
-        SDL_FRect barRect;
-        int maxBarSize = 100; // Maximum size of indicator bar
-        int barSize = std::min(count * 5, maxBarSize); // 5 pixels per vehicle, max 100
+    switch (dir) {
+        case Direction::UP:
+            points[0] = {static_cast<float>(x), static_cast<float>(y - arrowSize/2)};
+            points[1] = {static_cast<float>(x - arrowSize/2), static_cast<float>(y + arrowSize/2)};
+            points[2] = {static_cast<float>(x + arrowSize/2), static_cast<float>(y + arrowSize/2)};
+            break;
 
-        switch (laneId) {
-            case 'A':
-                // A lanes - horizontal bar on left side of lane
-                barRect = {
-                    static_cast<float>(windowWidth/2 + (laneNum-2)*LANE_WIDTH - 10),
-                    static_cast<float>(windowHeight/4),
-                    10,
-                    static_cast<float>(barSize)
-                };
-                break;
-            case 'B':
-                // B lanes - horizontal bar on right side of lane
-                barRect = {
-                    static_cast<float>(windowWidth/2 - (laneNum-2)*LANE_WIDTH),
-                    static_cast<float>(3*windowHeight/4 - barSize),
-                    10,
-                    static_cast<float>(barSize)
-                };
-                break;
-            case 'C':
-                // C lanes - vertical bar below lane
-                barRect = {
-                    static_cast<float>(3*windowWidth/4 - barSize),
-                    static_cast<float>(windowHeight/2 + (laneNum-2)*LANE_WIDTH),
-                    static_cast<float>(barSize),
-                    10
-                };
-                break;
-            case 'D':
-                // D lanes - vertical bar above lane
-                barRect = {
-                    static_cast<float>(windowWidth/4),
-                    static_cast<float>(windowHeight/2 - (laneNum-2)*LANE_WIDTH - 10),
-                    static_cast<float>(barSize),
-                    10
-                };
-                break;
-        }
+        case Direction::DOWN:
+            points[0] = {static_cast<float>(x), static_cast<float>(y + arrowSize/2)};
+            points[1] = {static_cast<float>(x - arrowSize/2), static_cast<float>(y - arrowSize/2)};
+            points[2] = {static_cast<float>(x + arrowSize/2), static_cast<float>(y - arrowSize/2)};
+            break;
 
-        // Draw the bar with the determined color
-        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-        SDL_RenderFillRect(renderer, &barRect);
+        case Direction::LEFT:
+            points[0] = {static_cast<float>(x - arrowSize/2), static_cast<float>(y)};
+            points[1] = {static_cast<float>(x + arrowSize/2), static_cast<float>(y - arrowSize/2)};
+            points[2] = {static_cast<float>(x + arrowSize/2), static_cast<float>(y + arrowSize/2)};
+            break;
 
-        // Draw border
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderRect(renderer, &barRect);
-
-        // Draw text showing actual count (in real implementation would use SDL_ttf)
-        // For now, just draw a placeholder
-        if (count > 0) {
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            float textX, textY;
-
-            switch (laneId) {
-                case 'A':
-                    textX = barRect.x - 15;
-                    textY = barRect.y + barRect.h/2 - 5;
-                    break;
-                case 'B':
-                    textX = barRect.x + 15;
-                    textY = barRect.y + barRect.h/2 - 5;
-                    break;
-                case 'C':
-                    textX = barRect.x + barRect.w/2 - 5;
-                    textY = barRect.y - 15;
-                    break;
-                case 'D':
-                    textX = barRect.x + barRect.w/2 - 5;
-                    textY = barRect.y + 15;
-                    break;
-            }
-
-            SDL_FRect textRect = {textX, textY, 10, 10};
-            SDL_RenderFillRect(renderer, &textRect);
-        }
+        case Direction::RIGHT:
+            points[0] = {static_cast<float>(x + arrowSize/2), static_cast<float>(y)};
+            points[1] = {static_cast<float>(x - arrowSize/2), static_cast<float>(y - arrowSize/2)};
+            points[2] = {static_cast<float>(x - arrowSize/2), static_cast<float>(y + arrowSize/2)};
+            break;
     }
+
+    // Draw outline
+    SDL_RenderLine(this->renderer, points[0].x, points[0].y, points[1].x, points[1].y);
+    SDL_RenderLine(this->renderer, points[1].x, points[1].y, points[2].x, points[2].y);
+    SDL_RenderLine(this->renderer, points[2].x, points[2].y, points[0].x, points[0].y);
+
+    // Create SDL vertices for filled triangle
+    SDL_Vertex vertices[3];
+    SDL_FColor fcolor = {
+        static_cast<float>(color.r) / 255.0f,
+        static_cast<float>(color.g) / 255.0f,
+        static_cast<float>(color.b) / 255.0f,
+        static_cast<float>(color.a) / 255.0f
+    };
+
+    // Set vertices
+    for (int i = 0; i < 3; i++) {
+        vertices[i].position = points[i];
+        vertices[i].color = fcolor;
+    }
+
+    // Draw filled triangle
+    SDL_RenderGeometry(this->renderer, NULL, vertices, 3, NULL, 0);
 }
 
-// In Renderer.cpp - fixed drawLaneLabels implementation
 void Renderer::drawLaneLabels() {
-    // Define constants for readability
-    const int LANE_WIDTH = 50;
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    const int ROAD_WIDTH = Constants::ROAD_WIDTH;
+    const int LANE_WIDTH = Constants::LANE_WIDTH;
 
-    // Keep original lane labels but enhance with queue counts
-    if (!trafficManager) {
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // TEXT_COLOR
+    // Road A (North - Top) labels
+    drawText("A (North)", windowWidth/2, 10, {255, 255, 255, 255});
+    drawText("A1", windowWidth/2 - LANE_WIDTH, windowHeight/4, {0, 140, 255, 255});
+    drawText("A2 (Priority)", windowWidth/2, windowHeight/4, {255, 140, 0, 255});
+    drawText("A3 (Free)", windowWidth/2 + LANE_WIDTH, windowHeight/4, {0, 220, 60, 255});
 
-        // Basic lane labels without counts
-        drawText("A", windowWidth/2, 10, {0, 0, 0, 255});
-        drawText("A1", windowWidth/2 - LANE_WIDTH, windowHeight/4, {0, 0, 0, 255});
-        drawText("A2", windowWidth/2, windowHeight/4, {0, 0, 0, 255});
-        drawText("A3", windowWidth/2 + LANE_WIDTH, windowHeight/4, {0, 0, 0, 255});
+    // Road B (East - Right) labels
+    drawText("B (East)", windowWidth - 60, windowHeight/2, {255, 255, 255, 255});
+    drawText("B1", 3*windowWidth/4, windowHeight/2 - LANE_WIDTH, {0, 140, 255, 255});
+    drawText("B2", 3*windowWidth/4, windowHeight/2, {255, 255, 255, 255});
+    drawText("B3 (Free)", 3*windowWidth/4, windowHeight/2 + LANE_WIDTH, {0, 220, 60, 255});
 
-        // Road B labels
-        drawText("B", windowWidth/2, windowHeight - 30, {0, 0, 0, 255});
-        drawText("B1", windowWidth/2 + LANE_WIDTH, 3*windowHeight/4, {0, 0, 0, 255});
-        drawText("B2", windowWidth/2, 3*windowHeight/4, {0, 0, 0, 255});
-        drawText("B3", windowWidth/2 - LANE_WIDTH, 3*windowHeight/4, {0, 0, 0, 255});
+    // Road C (South - Bottom) labels
+    drawText("C (South)", windowWidth/2, windowHeight - 30, {255, 255, 255, 255});
+    drawText("C1", windowWidth/2 + LANE_WIDTH, 3*windowHeight/4, {0, 140, 255, 255});
+    drawText("C2", windowWidth/2, 3*windowHeight/4, {255, 255, 255, 255});
+    drawText("C3 (Free)", windowWidth/2 - LANE_WIDTH, 3*windowHeight/4, {0, 220, 60, 255});
 
-        // Road C labels
-        drawText("C", windowWidth - 30, windowHeight/2, {0, 0, 0, 255});
-        drawText("C1", 3*windowWidth/4, windowHeight/2 - LANE_WIDTH, {0, 0, 0, 255});
-        drawText("C2", 3*windowWidth/4, windowHeight/2, {0, 0, 0, 255});
-        drawText("C3", 3*windowWidth/4, windowHeight/2 + LANE_WIDTH, {0, 0, 0, 255});
+    // Road D (West - Left) labels
+    drawText("D (West)", 50, windowHeight/2, {255, 255, 255, 255});
+    drawText("D1", windowWidth/4, windowHeight/2 + LANE_WIDTH, {0, 140, 255, 255});
+    drawText("D2", windowWidth/4, windowHeight/2, {255, 255, 255, 255});
+    drawText("D3 (Free)", windowWidth/4, windowHeight/2 - LANE_WIDTH, {0, 220, 60, 255});
 
-        // Road D labels
-        drawText("D", 10, windowHeight/2, {0, 0, 0, 255});
-        drawText("D1", windowWidth/4, windowHeight/2 + LANE_WIDTH, {0, 0, 0, 255});
-        drawText("D2", windowWidth/4, windowHeight/2, {0, 0, 0, 255});
-        drawText("D3", windowWidth/4, windowHeight/2 - LANE_WIDTH, {0, 0, 0, 255});
+    // Draw direction arrows
+    // North (Road A) direction arrows
+    drawArrow(windowWidth/2 - LANE_WIDTH*1.5, windowHeight/4 + 15, // Lane A1 arrow (straight)
+             windowWidth/2 - LANE_WIDTH*1.5, windowHeight/4 + 30,
+             windowWidth/2 - LANE_WIDTH*1.5 - 5, windowHeight/4 + 25,
+             {0, 140, 255, 255});
 
-        return;
-    }
+    // Draw split arrows for Lane A2 (priority) - straight or right
+    drawArrow(windowWidth/2, windowHeight/4 + 15, // Lane A2 arrow straight
+             windowWidth/2, windowHeight/4 + 30,
+             windowWidth/2 - 5, windowHeight/4 + 25,
+             {255, 140, 0, 255});
+    drawArrow(windowWidth/2 + 10, windowHeight/4 + 15, // Lane A2 arrow right
+             windowWidth/2 + 20, windowHeight/4 + 20,
+             windowWidth/2 + 15, windowHeight/4 + 10,
+             {255, 140, 0, 255});
 
-    // Enhanced labels with vehicle counts
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // TEXT_COLOR
+    // Draw left arrow for Lane A3 (free)
+    drawArrow(windowWidth/2 + LANE_WIDTH*1.5 - 10, windowHeight/4 + 15, // Lane A3 arrow left
+             windowWidth/2 + LANE_WIDTH*1.5 - 20, windowHeight/4 + 20,
+             windowWidth/2 + LANE_WIDTH*1.5 - 15, windowHeight/4 + 10,
+             {0, 220, 60, 255});
 
-    // Road A labels
-    drawText("A", windowWidth/2, 10, {0, 0, 0, 255});
+    // East (Road B) direction arrows - similar logic
+    drawArrow(3*windowWidth/4 - 15, windowHeight/2 - LANE_WIDTH*1.5, // Lane B1 arrow (straight)
+             3*windowWidth/4 - 30, windowHeight/2 - LANE_WIDTH*1.5,
+             3*windowWidth/4 - 25, windowHeight/2 - LANE_WIDTH*1.5 - 5,
+             {0, 140, 255, 255});
 
-    Lane* a1Lane = trafficManager->findLane('A', 1);
-    Lane* a2Lane = trafficManager->findLane('A', 2);
-    Lane* a3Lane = trafficManager->findLane('A', 3);
+    // Draw split arrows for Lane B2 - straight or right
+    drawArrow(3*windowWidth/4 - 15, windowHeight/2, // Lane B2 arrow straight
+             3*windowWidth/4 - 30, windowHeight/2,
+             3*windowWidth/4 - 25, windowHeight/2 - 5,
+             {255, 255, 255, 255});
+    drawArrow(3*windowWidth/4 - 15, windowHeight/2 + 10, // Lane B2 arrow right
+             3*windowWidth/4 - 20, windowHeight/2 + 20,
+             3*windowWidth/4 - 10, windowHeight/2 + 15,
+             {255, 255, 255, 255});
 
-    std::string a1Text = "A1";
-    std::string a2Text = "A2";
-    std::string a3Text = "A3";
+    // Draw left arrow for Lane B3 (free)
+    drawArrow(3*windowWidth/4 - 15, windowHeight/2 + LANE_WIDTH*1.5 - 10, // Lane B3 arrow left
+             3*windowWidth/4 - 20, windowHeight/2 + LANE_WIDTH*1.5 - 20,
+             3*windowWidth/4 - 10, windowHeight/2 + LANE_WIDTH*1.5 - 15,
+             {0, 220, 60, 255});
 
-    // Add vehicle counts if lanes exist
-    if (a1Lane) a1Text += " (" + std::to_string(a1Lane->getVehicleCount()) + ")";
-    if (a2Lane) {
-        a2Text += " (" + std::to_string(a2Lane->getVehicleCount()) + ")";
-        // Highlight A2 if it has priority
-        if (a2Lane->getPriority() > 0) {
-            drawText(a2Text, windowWidth/2, windowHeight/4, {255, 165, 0, 255}); // PRIORITY_INDICATOR_COLOR
-        } else {
-            drawText(a2Text, windowWidth/2, windowHeight/4, {0, 0, 0, 255});
-        }
-    } else {
-        drawText(a2Text, windowWidth/2, windowHeight/4, {0, 0, 0, 255});
-    }
-    if (a3Lane) a3Text += " (" + std::to_string(a3Lane->getVehicleCount()) + ")";
+    // South (Road C) direction arrows
+    drawArrow(windowWidth/2 + LANE_WIDTH*1.5, 3*windowHeight/4 - 15, // Lane C1 arrow (straight)
+             windowWidth/2 + LANE_WIDTH*1.5, 3*windowHeight/4 - 30,
+             windowWidth/2 + LANE_WIDTH*1.5 + 5, 3*windowHeight/4 - 25,
+             {0, 140, 255, 255});
 
-    drawText(a1Text, windowWidth/2 - LANE_WIDTH, windowHeight/4, {0, 0, 0, 255});
-    drawText(a3Text, windowWidth/2 + LANE_WIDTH, windowHeight/4, {0, 0, 0, 255});
+    // Draw split arrows for Lane C2 - straight or right
+    drawArrow(windowWidth/2, 3*windowHeight/4 - 15, // Lane C2 arrow straight
+             windowWidth/2, 3*windowHeight/4 - 30,
+             windowWidth/2 + 5, 3*windowHeight/4 - 25,
+             {255, 255, 255, 255});
+    drawArrow(windowWidth/2 - 10, 3*windowHeight/4 - 15, // Lane C2 arrow right
+             windowWidth/2 - 20, 3*windowHeight/4 - 20,
+             windowWidth/2 - 15, 3*windowHeight/4 - 10,
+             {255, 255, 255, 255});
 
-    // Road B labels with vehicle counts
-    drawText("B", windowWidth/2, windowHeight - 30, {0, 0, 0, 255});
+    // Draw left arrow for Lane C3 (free)
+    drawArrow(windowWidth/2 - LANE_WIDTH*1.5 + 10, 3*windowHeight/4 - 15, // Lane C3 arrow left
+             windowWidth/2 - LANE_WIDTH*1.5 + 20, 3*windowHeight/4 - 20,
+             windowWidth/2 - LANE_WIDTH*1.5 + 15, 3*windowHeight/4 - 10,
+             {0, 220, 60, 255});
 
-    Lane* b1Lane = trafficManager->findLane('B', 1);
-    Lane* b2Lane = trafficManager->findLane('B', 2);
-    Lane* b3Lane = trafficManager->findLane('B', 3);
+    // West (Road D) direction arrows
+    drawArrow(windowWidth/4 + 15, windowHeight/2 + LANE_WIDTH*1.5, // Lane D1 arrow (straight)
+             windowWidth/4 + 30, windowHeight/2 + LANE_WIDTH*1.5,
+             windowWidth/4 + 25, windowHeight/2 + LANE_WIDTH*1.5 + 5,
+             {0, 140, 255, 255});
 
-    std::string b1Text = "B1";
-    std::string b2Text = "B2";
-    std::string b3Text = "B3";
+    // Draw split arrows for Lane D2 - straight or right
+    drawArrow(windowWidth/4 + 15, windowHeight/2, // Lane D2 arrow straight
+             windowWidth/4 + 30, windowHeight/2,
+             windowWidth/4 + 25, windowHeight/2 + 5,
+             {255, 255, 255, 255});
+    drawArrow(windowWidth/4 + 15, windowHeight/2 - 10, // Lane D2 arrow right
+             windowWidth/4 + 20, windowHeight/2 - 20,
+             windowWidth/4 + 10, windowHeight/2 - 15,
+             {255, 255, 255, 255});
 
-    if (b1Lane) b1Text += " (" + std::to_string(b1Lane->getVehicleCount()) + ")";
-    if (b2Lane) b2Text += " (" + std::to_string(b2Lane->getVehicleCount()) + ")";
-    if (b3Lane) b3Text += " (" + std::to_string(b3Lane->getVehicleCount()) + ")";
-
-    drawText(b1Text, windowWidth/2 + LANE_WIDTH, 3*windowHeight/4, {0, 0, 0, 255});
-    drawText(b2Text, windowWidth/2, 3*windowHeight/4, {0, 0, 0, 255});
-    drawText(b3Text, windowWidth/2 - LANE_WIDTH, 3*windowHeight/4, {0, 0, 0, 255});
-
-    // Road C labels with vehicle counts
-    drawText("C", windowWidth - 30, windowHeight/2, {0, 0, 0, 255});
-
-    Lane* c1Lane = trafficManager->findLane('C', 1);
-    Lane* c2Lane = trafficManager->findLane('C', 2);
-    Lane* c3Lane = trafficManager->findLane('C', 3);
-
-    std::string c1Text = "C1";
-    std::string c2Text = "C2";
-    std::string c3Text = "C3";
-
-    if (c1Lane) c1Text += " (" + std::to_string(c1Lane->getVehicleCount()) + ")";
-    if (c2Lane) c2Text += " (" + std::to_string(c2Lane->getVehicleCount()) + ")";
-    if (c3Lane) c3Text += " (" + std::to_string(c3Lane->getVehicleCount()) + ")";
-
-    drawText(c1Text, 3*windowWidth/4, windowHeight/2 - LANE_WIDTH, {0, 0, 0, 255});
-    drawText(c2Text, 3*windowWidth/4, windowHeight/2, {0, 0, 0, 255});
-    drawText(c3Text, 3*windowWidth/4, windowHeight/2 + LANE_WIDTH, {0, 0, 0, 255});
-
-    // Road D labels with vehicle counts
-    drawText("D", 10, windowHeight/2, {0, 0, 0, 255});
-
-    Lane* d1Lane = trafficManager->findLane('D', 1);
-    Lane* d2Lane = trafficManager->findLane('D', 2);
-    Lane* d3Lane = trafficManager->findLane('D', 3);
-
-    std::string d1Text = "D1";
-    std::string d2Text = "D2";
-    std::string d3Text = "D3";
-
-    if (d1Lane) d1Text += " (" + std::to_string(d1Lane->getVehicleCount()) + ")";
-    if (d2Lane) d2Text += " (" + std::to_string(d2Lane->getVehicleCount()) + ")";
-    if (d3Lane) d3Text += " (" + std::to_string(d3Lane->getVehicleCount()) + ")";
-
-    drawText(d1Text, windowWidth/4, windowHeight/2 + LANE_WIDTH, {0, 0, 0, 255});
-    drawText(d2Text, windowWidth/4, windowHeight/2, {0, 0, 0, 255});
-    drawText(d3Text, windowWidth/4, windowHeight/2 - LANE_WIDTH, {0, 0, 0, 255});
+    // Draw left arrow for Lane D3 (free)
+    drawArrow(windowWidth/4 + 15, windowHeight/2 - LANE_WIDTH*1.5 + 10, // Lane D3 arrow left
+             windowWidth/4 + 20, windowHeight/2 - LANE_WIDTH*1.5 + 20,
+             windowWidth/4 + 10, windowHeight/2 - LANE_WIDTH*1.5 + 15,
+             {0, 220, 60, 255});
 }
 
 void Renderer::drawTrafficLights() {
@@ -596,122 +668,32 @@ void Renderer::drawVehicles() {
 }
 
 void Renderer::drawDebugOverlay() {
-    if (!trafficManager) return;
-
     // Draw semi-transparent background
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200); // More opaque background
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_FRect overlayRect = {10, 10, 250, 200};
+    SDL_FRect overlayRect = {10, 10, 280, 180}; // Larger overlay
     SDL_RenderFillRect(renderer, &overlayRect);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
-    // Draw border
+    // Add border
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderRect(renderer, &overlayRect);
 
-    int y = 20;
-    drawText("Traffic Simulator Stats", 20, y, {255, 255, 255, 255});
-    y += 25;
+    // Draw statistics
+    drawStatistics();
 
-    // Traffic light state
-    auto* trafficLight = trafficManager->getTrafficLight();
-    if (trafficLight) {
-        auto state = trafficLight->getCurrentState();
-        std::string stateStr = "Light: ";
-        SDL_Color stateColor = {255, 255, 255, 255};
+    // Draw title
+    drawText("Traffic Junction Simulator", 20, 20, {255, 255, 255, 255});
+    drawText("Press D to toggle debug overlay", 20, 40, {200, 200, 200, 255});
 
-        switch (state) {
-            case TrafficLight::State::ALL_RED:
-                stateStr += "All Red";
-                stateColor = {255, 100, 100, 255};
-                break;
-            case TrafficLight::State::A_GREEN:
-                stateStr += "A Green";
-                stateColor = {100, 255, 100, 255};
-                break;
-            case TrafficLight::State::B_GREEN:
-                stateStr += "B Green";
-                stateColor = {100, 255, 100, 255};
-                break;
-            case TrafficLight::State::C_GREEN:
-                stateStr += "C Green";
-                stateColor = {100, 255, 100, 255};
-                break;
-            case TrafficLight::State::D_GREEN:
-                stateStr += "D Green";
-                stateColor = {100, 255, 100, 255};
-                break;
-        }
-        drawText(stateStr, 20, y, stateColor);
+    // Draw recent logs
+    std::vector<std::string> logs = DebugLogger::getRecentLogs(5);
+    int y = 170;
+
+    for (const auto& log : logs) {
+        std::string truncatedLog = log.length() > 50 ? log.substr(0, 47) + "..." : log;
+        drawText(truncatedLog, 10, y, {200, 200, 200, 255});
         y += 20;
-    }
-
-    // Priority status
-    Lane* al2Lane = trafficManager->findLane('A', 2);
-    if (al2Lane) {
-        int count = al2Lane->getVehicleCount();
-        std::string priorityStr = "A2: " + std::to_string(count) + " vehicles";
-
-        if (al2Lane->getPriority() > 0) {
-            priorityStr += " (PRIORITY)";
-            drawText(priorityStr, 20, y, {255, 165, 0, 255});
-        } else {
-            if (count > 5 && count <= 10) {
-                priorityStr += " (5-10 ZONE)";
-                drawText(priorityStr, 20, y, {220, 220, 0, 255});
-            } else {
-                drawText(priorityStr, 20, y, {255, 255, 255, 255});
-            }
-        }
-        y += 20;
-    }
-
-    // Free lanes (lane 3) stats
-    int totalFreeLaneVehicles = 0;
-
-    Lane* a3Lane = trafficManager->findLane('A', 3);
-    Lane* b3Lane = trafficManager->findLane('B', 3);
-    Lane* c3Lane = trafficManager->findLane('C', 3);
-    Lane* d3Lane = trafficManager->findLane('D', 3);
-
-    if (a3Lane) totalFreeLaneVehicles += a3Lane->getVehicleCount();
-    if (b3Lane) totalFreeLaneVehicles += b3Lane->getVehicleCount();
-    if (c3Lane) totalFreeLaneVehicles += c3Lane->getVehicleCount();
-    if (d3Lane) totalFreeLaneVehicles += d3Lane->getVehicleCount();
-
-    drawText("Free Lanes: " + std::to_string(totalFreeLaneVehicles) +
-             " vehicles (all LEFT turn)", 20, y, {0, 200, 0, 255});
-    y += 20;
-
-    // Total vehicles
-    int totalVehicles = 0;
-    for (auto* lane : trafficManager->getLanes()) {
-        totalVehicles += lane->getVehicleCount();
-    }
-    drawText("Total Vehicles: " + std::to_string(totalVehicles), 20, y, {255, 255, 255, 255});
-    y += 25;
-
-    // Formula explanation
-    drawText("Light Duration = |V| * 2s", 20, y, {200, 200, 255, 255});
-    y += 20;
-    drawText("|V| = avg. vehicles per normal lane", 20, y, {200, 200, 255, 255});
-    y += 20;
-
-    // Show logs if there's space
-    std::vector<std::string> logs = DebugLogger::getRecentLogs(3);
-    if (!logs.empty()) {
-        y += 10;
-        drawText("Recent logs:", 20, y, {180, 180, 180, 255});
-        y += 15;
-
-        for (const auto& log : logs) {
-            std::string shortLog = log;
-            if (shortLog.length() > 25) {
-                shortLog = shortLog.substr(0, 22) + "...";
-            }
-            drawText(shortLog, 20, y, {150, 150, 150, 255});
-            y += 15;
-        }
     }
 }
 
@@ -726,25 +708,66 @@ void Renderer::drawStatistics() {
     // Split into lines
     std::istringstream stream(stats);
     std::string line;
-    int y = 20;
+    int y = 60;
 
     while (std::getline(stream, line)) {
-        drawText(line, 20, y, {255, 255, 255, 255});
+        // Check if line contains priority info
+        if (line.find("PRIORITY") != std::string::npos) {
+            drawText(line, 20, y, {255, 140, 0, 255}); // Highlight priority lanes
+        } else if (line.find("A2") != std::string::npos) {
+            drawText(line, 20, y, {255, 200, 0, 255}); // Highlight A2 lane
+        } else {
+            drawText(line, 20, y, {255, 255, 255, 255});
+        }
         y += 20;
     }
+
+    // Show current traffic light state
+    SDL_Color stateColor = {255, 255, 255, 255};
+    std::string stateText = "Traffic Light: ";
+
+    auto* trafficLight = trafficManager->getTrafficLight();
+    if (trafficLight) {
+        auto currentState = trafficLight->getCurrentState();
+        switch (currentState) {
+            case TrafficLight::State::ALL_RED:
+                stateText += "All Red";
+                stateColor = {255, 100, 100, 255};
+                break;
+            case TrafficLight::State::A_GREEN:
+                stateText += "A Green (North)";
+                stateColor = {100, 255, 100, 255};
+                break;
+            case TrafficLight::State::B_GREEN:
+                stateText += "B Green (East)";
+                stateColor = {100, 255, 100, 255};
+                break;
+            case TrafficLight::State::C_GREEN:
+                stateText += "C Green (South)";
+                stateColor = {100, 255, 100, 255};
+                break;
+            case TrafficLight::State::D_GREEN:
+                stateText += "D Green (West)";
+                stateColor = {100, 255, 100, 255};
+                break;
+        }
+    }
+
+    drawText(stateText, 20, y, stateColor);
 }
 
 void Renderer::drawText(const std::string& text, int x, int y, SDL_Color color) {
     // Since we don't have SDL_ttf configured, draw a colored rectangle
-    // and note that we would normally render text here
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
     SDL_FRect textRect = {static_cast<float>(x), static_cast<float>(y),
                          static_cast<float>(8 * text.length()), 15};
 
-    // SDL3 uses SDL_RenderRect instead of SDL_RenderDrawRect
-    SDL_RenderRect(renderer, &textRect);
+    // Draw colored rectangle representing text
+    SDL_RenderFillRect(renderer, &textRect);
 
-    // In a real implementation with SDL_ttf, we would render the text here
+    // Draw text outline
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderRect(renderer, &textRect);
 }
 
 void Renderer::drawArrow(int x1, int y1, int x2, int y2, int x3, int y3, SDL_Color color) {
@@ -755,34 +778,34 @@ void Renderer::drawArrow(int x1, int y1, int x2, int y2, int x3, int y3, SDL_Col
     SDL_RenderLine(renderer, x2, y2, x3, y3);
     SDL_RenderLine(renderer, x3, y3, x1, y1);
 
-    // Fill triangle (simple implementation)
-    // Sort vertices by y
-    if (y1 > y2) { std::swap(y1, y2); std::swap(x1, x2); }
-    if (y1 > y3) { std::swap(y1, y3); std::swap(x1, x3); }
-    if (y2 > y3) { std::swap(y2, y3); std::swap(x2, x3); }
+    // Create vertices for filled triangle with SDL_FColor for SDL3 compatibility
+    SDL_Vertex vertices[3];
 
-    // Compute slopes
-    float dx1 = (y2 - y1) ? static_cast<float>(x2 - x1) / (y2 - y1) : 0;
-    float dx2 = (y3 - y1) ? static_cast<float>(x3 - x1) / (y3 - y1) : 0;
-    float dx3 = (y3 - y2) ? static_cast<float>(x3 - x2) / (y3 - y2) : 0;
+    // Convert SDL_Color to SDL_FColor for vertices
+    SDL_FColor fcolor = {
+        static_cast<float>(color.r) / 255.0f,
+        static_cast<float>(color.g) / 255.0f,
+        static_cast<float>(color.b) / 255.0f,
+        static_cast<float>(color.a) / 255.0f
+    };
 
-    float sx1 = x1, sx2 = x1;
+    // First vertex
+    vertices[0].position.x = x1;
+    vertices[0].position.y = y1;
+    vertices[0].color = fcolor;
 
-    // Fill top to middle
-    for (int y = y1; y < y2; y++) {
-        SDL_RenderLine(renderer, static_cast<int>(sx1), y, static_cast<int>(sx2), y);
-        sx1 += dx1;
-        sx2 += dx2;
-    }
+    // Second vertex
+    vertices[1].position.x = x2;
+    vertices[1].position.y = y2;
+    vertices[1].color = fcolor;
 
-    sx1 = x2;
+    // Third vertex
+    vertices[2].position.x = x3;
+    vertices[2].position.y = y3;
+    vertices[2].color = fcolor;
 
-    // Fill middle to bottom
-    for (int y = y2; y <= y3; y++) {
-        SDL_RenderLine(renderer, static_cast<int>(sx1), y, static_cast<int>(sx2), y);
-        sx1 += dx3;
-        sx2 += dx2;
-    }
+    // Draw the filled triangle
+    SDL_RenderGeometry(renderer, NULL, vertices, 3, NULL, 0);
 }
 
 void Renderer::cleanup() {
