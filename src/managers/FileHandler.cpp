@@ -160,6 +160,12 @@ Vehicle* FileHandler::parseVehicleLine(const std::string& line) {
         }
     }
 
+    // Don't spawn vehicles in Lane 1 (L1)
+    if (laneNumber == 1) {
+        DebugLogger::log("Ignoring vehicle in Lane 1: " + line, DebugLogger::LogLevel::WARNING);
+        return nullptr;
+    }
+
     // Determine direction from ID - important for vehicle behavior
     Destination destination = Destination::STRAIGHT; // Default
 
@@ -168,10 +174,10 @@ Vehicle* FileHandler::parseVehicleLine(const std::string& line) {
         destination = Destination::LEFT;
     } else if (laneNumber == 2) {
         // Check for direction in ID
-        if (vehicleId.find("_RIGHT") != std::string::npos) {
-            destination = Destination::RIGHT;
-        } else if (vehicleId.find("_LEFT") != std::string::npos) {
+        if (vehicleId.find("_LEFT") != std::string::npos) {
             destination = Destination::LEFT;
+        } else if (vehicleId.find("_STRAIGHT") != std::string::npos) {
+            destination = Destination::STRAIGHT;
         } else {
             // Default for L2 if not specified is STRAIGHT
             destination = Destination::STRAIGHT;

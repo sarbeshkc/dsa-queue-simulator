@@ -12,7 +12,7 @@
 #include <iomanip>
 #include <atomic>
 #include <csignal>
-#include <map>  // Added missing map header
+#include <map>
 
 // Include Windows-specific headers if on Windows
 #ifdef _WIN32
@@ -81,13 +81,13 @@ void ensure_directories() {
     }
 }
 
-// Write a vehicle to lane file
+// Write a vehicle to lane file with updated turn directions
 void write_vehicle(const std::string& id, char lane, int laneNumber, Direction dir = Direction::LEFT) {
     static std::mutex fileMutex;
     std::lock_guard<std::mutex> lock(fileMutex);
 
-    // Skip invalid lane numbers
-    if (laneNumber < 1 || laneNumber > 3) {
+    // Skip invalid lane numbers and Lane 1 (shouldn't spawn here)
+    if (laneNumber < 1 || laneNumber > 3 || laneNumber == 1) {
         return;
     }
 
@@ -103,14 +103,12 @@ void write_vehicle(const std::string& id, char lane, int laneNumber, Direction d
             // Lane 3 always turns left
             file << "_LEFT";
         } else if (laneNumber == 2) {
-            // Lane 2 can go straight or right
+            // Lane 2 can go straight or left (changed from right to left)
             if (dir == Direction::STRAIGHT) {
                 file << "_STRAIGHT";
             } else {
-                file << "_RIGHT";
+                file << "_LEFT"; // Changed from _RIGHT to _LEFT
             }
-        } else if (laneNumber == 1) {
-            // Lane 1 is incoming lane - no special handling needed
         }
 
         file << ":" << lane << std::endl;
@@ -125,12 +123,10 @@ void write_vehicle(const std::string& id, char lane, int laneNumber, Direction d
             dirStr = " (LEFT turn)";
         } else if (laneNumber == 2 && lane == 'A') {
             color = "\033[1;33m"; // Yellow for priority lane
-            dirStr = (dir == Direction::STRAIGHT) ? " (STRAIGHT)" : " (RIGHT turn)";
+            dirStr = (dir == Direction::STRAIGHT) ? " (STRAIGHT)" : " (LEFT turn)";
         } else if (laneNumber == 2) {
             color = "\033[1;37m"; // White for normal lane 2
-            dirStr = (dir == Direction::STRAIGHT) ? " (STRAIGHT)" : " (RIGHT turn)";
-        } else {
-            color = "\033[1;36m"; // Cyan for lane 1
+            dirStr = (dir == Direction::STRAIGHT) ? " (STRAIGHT)" : " (LEFT turn)";
         }
 
         console_log("Added " + id + " to lane " + lane + std::to_string(laneNumber) + dirStr, color);
@@ -147,19 +143,19 @@ char random_lane() {
     return 'A' + dist(gen);
 }
 
-// Generate a lane number with improved distribution (1, 2, or 3)
+// Generate a lane number - only Lane 2 or 3 (never Lane 1)
 int random_lane_number() {
     static std::random_device rd;
     static std::mt19937 gen(rd());
 
-    // Improved distribution: 20% lane 1, 50% lane 2, 30% lane 3
-    std::vector<double> weights = {0.2, 0.5, 0.3};
+    // Only generate Lane 2 (60%) or Lane 3 (40%) - never Lane 1
+    std::vector<double> weights = {0.0, 0.6, 0.4}; // Weights for lanes 1, 2, 3
     std::discrete_distribution<int> dist(weights.begin(), weights.end());
 
-    return dist(gen) + 1; // Returns 1, 2, or 3
+    return dist(gen) + 1; // Returns 2 or 3
 }
 
-// Generate direction (straight, left, right) based on lane rules
+// Generate direction (LEFT or STRAIGHT) based on lane rules
 Direction random_direction(int laneNumber) {
     static std::random_device rd;
     static std::mt19937 gen(rd());
@@ -168,12 +164,12 @@ Direction random_direction(int laneNumber) {
         // Lane 3 always goes left
         return Direction::LEFT;
     } else if (laneNumber == 2) {
-        // Lane 2 can go straight (60%) or right (40%)
-        std::vector<double> weights = {0.0, 0.6, 0.4}; // [LEFT, STRAIGHT, RIGHT]
+        // Lane 2 can go straight (60%) or left (40%) - changed from right to left
+        std::vector<double> weights = {0.4, 0.6, 0.0}; // [LEFT, STRAIGHT, RIGHT]
         std::discrete_distribution<int> dist(weights.begin(), weights.end());
         return static_cast<Direction>(dist(gen));
     } else {
-        // Lane 1 is incoming lane
+        // Lane 1 is incoming lane (shouldn't generate vehicles)
         return Direction::STRAIGHT;
     }
 }
@@ -306,8 +302,8 @@ int main() {
         for (int i = 0; i < 12 && keepRunning; i++) {
             std::string id = "V" + std::to_string(total_vehicles + 1);
 
-            // Alternate between straight and right turns for lane A2
-            Direction dir = (i % 2 == 0) ? Direction::STRAIGHT : Direction::RIGHT;
+            // Alternate between straight and left turns for lane A2
+            Direction dir = (i % 2 == 0) ? Direction::STRAIGHT : Direction::LEFT;
             write_vehicle(id, 'A', 2, dir); // Lane A2 with direction
 
             total_vehicles++;
@@ -338,14 +334,14 @@ int main() {
         // Continuous generation until terminated
         while (keepRunning) {
             char lane = random_lane();
-            int lane_num = random_lane_number();
+            int lane_num = random_lane_number(); // Will only return 2 or 3
             Direction dir = random_direction(lane_num);
 
             // For testing priority condition, occasionally bias toward lane A2
             if (gen() % 10 == 0) {
                 lane = 'A';
                 lane_num = 2;
-                dir = (gen() % 2 == 0) ? Direction::STRAIGHT : Direction::RIGHT;
+                dir = (gen() % 2 == 0) ? Direction::STRAIGHT : Direction::LEFT;
             }
 
             // Also ensure good distribution for lane 3 (free lane)

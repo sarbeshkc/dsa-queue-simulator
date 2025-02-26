@@ -33,70 +33,100 @@ Vehicle::Vehicle(const std::string& id, char lane, int laneNumber, bool isEmerge
     const int centerX = windowWidth / 2;
     const int centerY = windowHeight / 2;
 
-    // Determine current direction based on lane
+    // Determine current direction based on road (lane letter)
     // A is North (top), B is East (right), C is South (bottom), D is West (left)
     switch (lane) {
-        case 'A': currentDirection = Direction::DOWN; break;  // Coming from North, moving South
-        case 'B': currentDirection = Direction::LEFT; break;  // Coming from East, moving West
-        case 'C': currentDirection = Direction::UP; break;    // Coming from South, moving North
-        case 'D': currentDirection = Direction::RIGHT; break; // Coming from West, moving East
+        case 'A':
+            currentDirection = Direction::DOWN;  // Road A (North) vehicles move DOWN
+            break;
+        case 'B':
+            currentDirection = Direction::LEFT;  // Road B (East) vehicles move LEFT
+            break;
+        case 'C':
+            currentDirection = Direction::UP;    // Road C (South) vehicles move UP
+            break;
+        case 'D':
+            currentDirection = Direction::RIGHT; // Road D (West) vehicles move RIGHT
+            break;
         default:
             DebugLogger::log("Invalid lane ID: " + std::string(1, lane), DebugLogger::LogLevel::ERROR);
             currentDirection = Direction::DOWN;
             break;
     }
 
-    // Determine destination based on lane number and rules from assignment
-    if (laneNumber == 3) {
-        // Free lane (L3) always turns left
-        destination = Destination::LEFT;
-        DebugLogger::log("Vehicle " + id + " on lane " + lane + std::to_string(laneNumber) + " will turn LEFT (free lane rule)");
-    }
-    else if (laneNumber == 2) {
-        // Lane 2 can go straight or turn right (based on vehicle ID hash)
-        // Use the last digit of the id for randomization (this ensures reproducibility)
-        int idHash = 0;
-        for (char c : id) idHash += c;
+    // Lane spacing - wider for better visibility
+    const float laneWidth = 50.0f;
+    const float laneOffset = 50.0f;
+    const float roadWidth = 150.0f;
 
-        // Check for explicit direction indication in ID
-        if (id.find("_RIGHT") != std::string::npos) {
-            destination = Destination::RIGHT;
-        } else if (id.find("_STRAIGHT") != std::string::npos) {
-            destination = Destination::STRAIGHT;
-        } else {
-            // 60% straight, 40% right turn if not specified
-            destination = (idHash % 10 < 6) ? Destination::STRAIGHT : Destination::RIGHT;
-        }
-
-        // Log the chosen direction
-        std::string destStr = (destination == Destination::STRAIGHT) ? "STRAIGHT" : "RIGHT";
-        DebugLogger::log("Vehicle " + id + " on lane " + lane + std::to_string(laneNumber) + " will go " + destStr);
-    }
-    else if (laneNumber == 1) {
-        // Lane 1 is incoming lane, straight is default
-        destination = Destination::STRAIGHT;
-    }
-
-    // Set initial position with wider lane spacing for better visualization
-    const float laneOffset = 25.0f; // Increased from 15.0f for better separation
-
-    // Set initial position based on lane and direction
-    switch (currentDirection) {
-        case Direction::DOWN: // From North (A)
-            turnPosX = centerX + (laneNumber - 2) * laneOffset;
-            turnPosY = 20.0f;  // Start at top of screen
+    // Set initial position based on lane and laneNumber (1, 2, or 3)
+    // IMPORTANT: We position vehicles according to ONE-WAY lanes on each road
+    switch (lane) {
+        case 'A': // North road (top)
+            // Lane 1 is not spawned (it's incoming)
+            // Lane 2 is middle lane - can go straight or left
+            // Lane 3 is rightmost lane - always turns left
+            switch (laneNumber) {
+                case 2:
+                    turnPosX = centerX; // Center lane
+                    break;
+                case 3:
+                    turnPosX = centerX + laneOffset; // Right lane
+                    break;
+                default:
+                    turnPosX = centerX; // Default to center if invalid
+                    DebugLogger::log("Invalid lane number for Road A: " + std::to_string(laneNumber), DebugLogger::LogLevel::WARNING);
+                    break;
+            }
+            turnPosY = 20.0f; // Near top of screen
             break;
-        case Direction::UP: // From South (C)
-            turnPosX = centerX - (laneNumber - 2) * laneOffset;
-            turnPosY = windowHeight - 20.0f;  // Start at bottom of screen
+
+        case 'B': // East road (right)
+            switch (laneNumber) {
+                case 2:
+                    turnPosY = centerY; // Center lane
+                    break;
+                case 3:
+                    turnPosY = centerY + laneOffset; // Bottom lane
+                    break;
+                default:
+                    turnPosY = centerY; // Default to center if invalid
+                    DebugLogger::log("Invalid lane number for Road B: " + std::to_string(laneNumber), DebugLogger::LogLevel::WARNING);
+                    break;
+            }
+            turnPosX = windowWidth - 20.0f; // Near right edge of screen
             break;
-        case Direction::LEFT: // From East (B)
-            turnPosX = windowWidth - 20.0f;  // Start at right of screen
-            turnPosY = centerY + (laneNumber - 2) * laneOffset;
+
+        case 'C': // South road (bottom)
+            switch (laneNumber) {
+                case 2:
+                    turnPosX = centerX; // Center lane
+                    break;
+                case 3:
+                    turnPosX = centerX - laneOffset; // Left lane
+                    break;
+                default:
+                    turnPosX = centerX; // Default to center if invalid
+                    DebugLogger::log("Invalid lane number for Road C: " + std::to_string(laneNumber), DebugLogger::LogLevel::WARNING);
+                    break;
+            }
+            turnPosY = windowHeight - 20.0f; // Near bottom of screen
             break;
-        case Direction::RIGHT: // From West (D)
-            turnPosX = 20.0f;  // Start at left of screen
-            turnPosY = centerY - (laneNumber - 2) * laneOffset;
+
+        case 'D': // West road (left)
+            switch (laneNumber) {
+                case 2:
+                    turnPosY = centerY; // Center lane
+                    break;
+                case 3:
+                    turnPosY = centerY - laneOffset; // Top lane
+                    break;
+                default:
+                    turnPosY = centerY; // Default to center if invalid
+                    DebugLogger::log("Invalid lane number for Road D: " + std::to_string(laneNumber), DebugLogger::LogLevel::WARNING);
+                    break;
+            }
+            turnPosX = 20.0f; // Near left edge of screen
             break;
     }
 
@@ -104,7 +134,37 @@ Vehicle::Vehicle(const std::string& id, char lane, int laneNumber, bool isEmerge
     animPos = (currentDirection == Direction::UP || currentDirection == Direction::DOWN) ?
               turnPosY : turnPosX;
 
-    // Initialize waypoints for path planning
+    // Determine destination based on lane number following the assignment rules
+    if (laneNumber == 3) {
+        // Lane 3 (L3) always turns left
+        destination = Destination::LEFT;
+        std::string msg = "Vehicle " + id + " on lane " + lane + std::to_string(laneNumber) + " will turn LEFT (free lane rule)";
+        DebugLogger::log(msg);
+    }
+    else if (laneNumber == 2) {
+        // Lane 2 (L2) can go straight or left (not right)
+        // Check for direction indication in ID
+        if (id.find("_LEFT") != std::string::npos) {
+            destination = Destination::LEFT;
+        } else if (id.find("_STRAIGHT") != std::string::npos) {
+            destination = Destination::STRAIGHT;
+        } else {
+            // Default behavior: 60% straight, 40% left
+            int idHash = 0;
+            for (char c : id) idHash += c;
+            destination = (idHash % 10 < 6) ? Destination::STRAIGHT : Destination::LEFT;
+        }
+
+        std::string destStr = (destination == Destination::STRAIGHT) ? "STRAIGHT" : "LEFT";
+        DebugLogger::log("Vehicle " + id + " on lane " + lane + std::to_string(laneNumber) + " will go " + destStr);
+    }
+    else if (laneNumber == 1) {
+        // Lane 1 (L1) is incoming lane (vehicles don't spawn here)
+        destination = Destination::STRAIGHT;
+        DebugLogger::log("WARNING: Vehicle " + id + " created in lane " + lane + "1 (incoming lane)");
+    }
+
+    // Initialize waypoints for movement
     initializeWaypoints();
 }
 
@@ -124,15 +184,15 @@ void Vehicle::initializeWaypoints() {
     // Clear existing waypoints
     waypoints.clear();
 
-    // Adjust intersection boundaries for better visualization
-    const float intersectionHalf = 50.0f;
+    // Adjust intersection boundaries
+    const float intersectionHalf = 70.0f; // Increased size for better visualization
     const float leftEdge = centerX - intersectionHalf;
     const float rightEdge = centerX + intersectionHalf;
     const float topEdge = centerY - intersectionHalf;
     const float bottomEdge = centerY + intersectionHalf;
 
-    // Lane offsets - more spacing for better visualization
-    const float laneOffset = 25.0f; // Increased from 15.0f
+    // Lane offset - consistent with vehicle initialization
+    const float laneOffset = 50.0f;
 
     // Add the starting position as first waypoint
     waypoints.push_back({turnPosX, turnPosY});
@@ -153,109 +213,43 @@ void Vehicle::initializeWaypoints() {
             break;
     }
 
-    // Add path through intersection based on destination and rules from assignment
-    if (destination == Destination::STRAIGHT) {
-        // For going straight: From L2 to opposite road's L1
-        switch (currentDirection) {
-            case Direction::DOWN:  // A to C (North to South)
-                waypoints.push_back({turnPosX, bottomEdge + 5.0f});  // Exit point
-                waypoints.push_back({turnPosX, windowHeight + 30.0f});  // Off screen
-                break;
-            case Direction::UP:    // C to A (South to North)
-                waypoints.push_back({turnPosX, topEdge - 5.0f});
-                waypoints.push_back({turnPosX, -30.0f});
-                break;
-            case Direction::LEFT:  // B to D (East to West)
-                waypoints.push_back({leftEdge - 5.0f, turnPosY});
-                waypoints.push_back({-30.0f, turnPosY});
-                break;
-            case Direction::RIGHT: // D to B (West to East)
-                waypoints.push_back({rightEdge + 5.0f, turnPosY});
-                waypoints.push_back({windowWidth + 30.0f, turnPosY});
-                break;
-        }
-    }
-    else if (destination == Destination::LEFT) {
-        // For L3 left turns: Always goes to the target road's L1
-        float centerPointX, centerPointY, exitPointX, exitPointY;
+    // UPDATED TURNING LOGIC BASED ON ASSIGNMENT REQUIREMENTS:
+    // AL3 → BL1; AL2: Straight → CL1, Left → DL1
+    // BL3 → CL1; BL2: Straight → DL1, Left → AL1
+    // CL3 → DL1; CL2: Straight → AL1, Left → BL1
+    // DL3 → AL1; DL2: Straight → BL1, Left → CL1
 
+    float centerPointX, centerPointY, exitPointX, exitPointY;
+
+    if (laneNumber == 3) {
+        // Lane 3 always turns left - Updated for the required routing
         switch (currentDirection) {
-            case Direction::DOWN:  // A to D - From North to West's L1
-                centerPointX = centerX - 20.0f;
-                centerPointY = centerY - 20.0f;
-                exitPointX = leftEdge - 5.0f;
-                exitPointY = centerY - laneOffset;  // Lane 1 position (D)
+            case Direction::DOWN:  // A(North) to B(East) - AL3 → BL1
+                centerPointX = centerX + laneOffset;
+                centerPointY = centerY - laneOffset;
+                exitPointX = rightEdge + 5.0f;
+                exitPointY = centerY;  // Lane 1 position (B)
 
                 waypoints.push_back({centerPointX, centerPointY});  // Turn center
                 waypoints.push_back({exitPointX, exitPointY});      // Exit point
-                waypoints.push_back({-30.0f, exitPointY});          // Off screen
+                waypoints.push_back({windowWidth + 30.0f, exitPointY}); // Off screen
                 break;
 
-            case Direction::UP:    // C to B - From South to East's L1
-                centerPointX = centerX + 20.0f;
-                centerPointY = centerY + 20.0f;
-                exitPointX = rightEdge + 5.0f;
-                exitPointY = centerY + laneOffset;  // Lane 1 position (B)
-
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({windowWidth + 30.0f, exitPointY});
-                break;
-
-            case Direction::LEFT:  // B to A - From East to North's L1
-                centerPointX = centerX + 20.0f;
-                centerPointY = centerY - 20.0f;
-                exitPointX = centerX + laneOffset;  // Lane 1 position (A)
-                exitPointY = topEdge - 5.0f;
-
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({exitPointX, -30.0f});
-                break;
-
-            case Direction::RIGHT: // D to C - From West to South's L1
-                centerPointX = centerX - 20.0f;
-                centerPointY = centerY + 20.0f;
-                exitPointX = centerX - laneOffset;  // Lane 1 position (C)
-                exitPointY = bottomEdge + 5.0f;
-
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({exitPointX, windowHeight + 30.0f});
-                break;
-        }
-    }
-    else if (destination == Destination::RIGHT) {
-        // For L2 right turns: Goes to the clockwise road's L1
-        float centerPointX, centerPointY, exitPointX, exitPointY;
-
-        switch (currentDirection) {
-            case Direction::DOWN:  // A to B - From North to East's L1
-                centerPointX = centerX + 20.0f;
-                centerPointY = centerY - 20.0f;
-                exitPointX = rightEdge + 5.0f;
-                exitPointY = centerY - laneOffset;  // Lane 1 position (B)
-
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({windowWidth + 30.0f, exitPointY});
-                break;
-
-            case Direction::UP:    // C to D - From South to West's L1
-                centerPointX = centerX - 20.0f;
-                centerPointY = centerY + 20.0f;
+            case Direction::UP:    // C(South) to D(West) - CL3 → DL1
+                centerPointX = centerX - laneOffset;
+                centerPointY = centerY + laneOffset;
                 exitPointX = leftEdge - 5.0f;
-                exitPointY = centerY + laneOffset;  // Lane 1 position (D)
+                exitPointY = centerY;  // Lane 1 position (D)
 
                 waypoints.push_back({centerPointX, centerPointY});
                 waypoints.push_back({exitPointX, exitPointY});
                 waypoints.push_back({-30.0f, exitPointY});
                 break;
 
-            case Direction::LEFT:  // B to C - From East to South's L1
-                centerPointX = centerX + 20.0f;
-                centerPointY = centerY + 20.0f;
-                exitPointX = centerX + laneOffset;  // Lane 1 position (C)
+            case Direction::LEFT:  // B(East) to C(South) - BL3 → CL1
+                centerPointX = centerX + laneOffset;
+                centerPointY = centerY + laneOffset;
+                exitPointX = centerX;  // Lane 1 position (C)
                 exitPointY = bottomEdge + 5.0f;
 
                 waypoints.push_back({centerPointX, centerPointY});
@@ -263,16 +257,87 @@ void Vehicle::initializeWaypoints() {
                 waypoints.push_back({exitPointX, windowHeight + 30.0f});
                 break;
 
-            case Direction::RIGHT: // D to A - From West to North's L1
-                centerPointX = centerX - 20.0f;
-                centerPointY = centerY - 20.0f;
-                exitPointX = centerX - laneOffset;  // Lane 1 position (A)
+            case Direction::RIGHT: // D(West) to A(North) - DL3 → AL1
+                centerPointX = centerX - laneOffset;
+                centerPointY = centerY - laneOffset;
+                exitPointX = centerX;  // Lane 1 position (A)
                 exitPointY = topEdge - 5.0f;
 
                 waypoints.push_back({centerPointX, centerPointY});
                 waypoints.push_back({exitPointX, exitPointY});
                 waypoints.push_back({exitPointX, -30.0f});
                 break;
+        }
+    }
+    else if (laneNumber == 2) {
+        if (destination == Destination::STRAIGHT) {
+            // Straight movements - Updated for the required routing
+            switch (currentDirection) {
+                case Direction::DOWN:  // A(North) to C(South) - AL2(straight) → CL1
+                    waypoints.push_back({turnPosX, bottomEdge + 5.0f});  // Exit point
+                    waypoints.push_back({turnPosX, windowHeight + 30.0f});  // Off screen
+                    break;
+                case Direction::UP:    // C(South) to A(North) - CL2(straight) → AL1
+                    waypoints.push_back({turnPosX, topEdge - 5.0f});
+                    waypoints.push_back({turnPosX, -30.0f});
+                    break;
+                case Direction::LEFT:  // B(East) to D(West) - BL2(straight) → DL1
+                    waypoints.push_back({leftEdge - 5.0f, turnPosY});
+                    waypoints.push_back({-30.0f, turnPosY});
+                    break;
+                case Direction::RIGHT: // D(West) to B(East) - DL2(straight) → BL1
+                    waypoints.push_back({rightEdge + 5.0f, turnPosY});
+                    waypoints.push_back({windowWidth + 30.0f, turnPosY});
+                    break;
+            }
+        }
+        else if (destination == Destination::LEFT) {
+            // Left turn movements for L2 - Updated for the required routing
+            switch (currentDirection) {
+                case Direction::DOWN:  // A(North) to D(West) - AL2(left) → DL1
+                    centerPointX = centerX - laneOffset;
+                    centerPointY = centerY - laneOffset;
+                    exitPointX = leftEdge - 5.0f;
+                    exitPointY = centerY;  // Lane 1 position (D)
+
+                    waypoints.push_back({centerPointX, centerPointY});
+                    waypoints.push_back({exitPointX, exitPointY});
+                    waypoints.push_back({-30.0f, exitPointY});
+                    break;
+
+                case Direction::UP:    // C(South) to B(East) - CL2(left) → BL1
+                    centerPointX = centerX + laneOffset;
+                    centerPointY = centerY + laneOffset;
+                    exitPointX = rightEdge + 5.0f;
+                    exitPointY = centerY;  // Lane 1 position (B)
+
+                    waypoints.push_back({centerPointX, centerPointY});
+                    waypoints.push_back({exitPointX, exitPointY});
+                    waypoints.push_back({windowWidth + 30.0f, exitPointY});
+                    break;
+
+                case Direction::LEFT:  // B(East) to A(North) - BL2(left) → AL1
+                    centerPointX = centerX + laneOffset;
+                    centerPointY = centerY - laneOffset;
+                    exitPointX = centerX;  // Lane 1 position (A)
+                    exitPointY = topEdge - 5.0f;
+
+                    waypoints.push_back({centerPointX, centerPointY});
+                    waypoints.push_back({exitPointX, exitPointY});
+                    waypoints.push_back({exitPointX, -30.0f});
+                    break;
+
+                case Direction::RIGHT: // D(West) to C(South) - DL2(left) → CL1
+                    centerPointX = centerX - laneOffset;
+                    centerPointY = centerY + laneOffset;
+                    exitPointX = centerX;  // Lane 1 position (C)
+                    exitPointY = bottomEdge + 5.0f;
+
+                    waypoints.push_back({centerPointX, centerPointY});
+                    waypoints.push_back({exitPointX, exitPointY});
+                    waypoints.push_back({exitPointX, windowHeight + 30.0f});
+                    break;
+            }
         }
     }
 
@@ -380,7 +445,7 @@ float Vehicle::easeInOutQuad(float t) const {
 void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
     // Fine-tune speed for smoother animation
     const float SPEED = 0.02f * delta;
-    const float VEHICLE_SPACING = 30.0f; // Increased spacing between vehicles in queue
+    const float VEHICLE_SPACING = 35.0f; // Must match laneOffset in constructor
 
     // Free lane (lane 3) always has green light
     bool canMove = isGreenLight || laneNumber == 3;
@@ -423,89 +488,101 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
                     state = VehicleState::EXITING;
 
                     // Update lane and number based on destination and direction
-                    // This follows the assignment rules for lane changes
+                    // This follows the assignment rules for lane changes:
+                    // AL3 → BL1; AL2: Straight → CL1, Left → DL1
+                    // BL3 → CL1; BL2: Straight → DL1, Left → AL1
+                    // CL3 → DL1; CL2: Straight → AL1, Left → BL1
+                    // DL3 → AL1; DL2: Straight → BL1, Left → CL1
                     switch (currentDirection) {
                         case Direction::DOWN:  // From North (A)
-                            if (destination == Destination::LEFT) {
-                                lane = 'D';  // Go to West
-                                laneNumber = 1;
-                                currentDirection = Direction::RIGHT;
-                                DebugLogger::log("Vehicle " + id + " now on D1 (turned LEFT from A)");
-                            }
-                            else if (destination == Destination::RIGHT) {
-                                lane = 'B';  // Go to East
+                            if (laneNumber == 3) {
+                                // AL3 → BL1
+                                lane = 'B';
                                 laneNumber = 1;
                                 currentDirection = Direction::LEFT;
-                                DebugLogger::log("Vehicle " + id + " now on B1 (turned RIGHT from A)");
+                                DebugLogger::log("Vehicle " + id + " now on B1 (turned LEFT from A3)");
+                            }
+                            else if (destination == Destination::LEFT) {
+                                // AL2(left) → DL1
+                                lane = 'D';
+                                laneNumber = 1;
+                                currentDirection = Direction::RIGHT;
+                                DebugLogger::log("Vehicle " + id + " now on D1 (turned LEFT from A2)");
                             }
                             else {
-                                // Going straight to South
+                                // AL2(straight) → CL1
                                 lane = 'C';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on C1 (going STRAIGHT from A)");
+                                DebugLogger::log("Vehicle " + id + " now on C1 (going STRAIGHT from A2)");
                             }
                             break;
 
                         case Direction::UP:    // From South (C)
-                            if (destination == Destination::LEFT) {
-                                lane = 'B';  // Go to East
-                                laneNumber = 1;
-                                currentDirection = Direction::LEFT;
-                                DebugLogger::log("Vehicle " + id + " now on B1 (turned LEFT from C)");
-                            }
-                            else if (destination == Destination::RIGHT) {
-                                lane = 'D';  // Go to West
+                            if (laneNumber == 3) {
+                                // CL3 → DL1
+                                lane = 'D';
                                 laneNumber = 1;
                                 currentDirection = Direction::RIGHT;
-                                DebugLogger::log("Vehicle " + id + " now on D1 (turned RIGHT from C)");
+                                DebugLogger::log("Vehicle " + id + " now on D1 (turned LEFT from C3)");
+                            }
+                            else if (destination == Destination::LEFT) {
+                                // CL2(left) → BL1
+                                lane = 'B';
+                                laneNumber = 1;
+                                currentDirection = Direction::LEFT;
+                                DebugLogger::log("Vehicle " + id + " now on B1 (turned LEFT from C2)");
                             }
                             else {
-                                // Going straight to North
+                                // CL2(straight) → AL1
                                 lane = 'A';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on A1 (going STRAIGHT from C)");
+                                DebugLogger::log("Vehicle " + id + " now on A1 (going STRAIGHT from C2)");
                             }
                             break;
 
                         case Direction::LEFT:  // From East (B)
-                            if (destination == Destination::LEFT) {
-                                lane = 'A';  // Go to North
-                                laneNumber = 1;
-                                currentDirection = Direction::DOWN;
-                                DebugLogger::log("Vehicle " + id + " now on A1 (turned LEFT from B)");
-                            }
-                            else if (destination == Destination::RIGHT) {
-                                lane = 'C';  // Go to South
+                            if (laneNumber == 3) {
+                                // BL3 → CL1
+                                lane = 'C';
                                 laneNumber = 1;
                                 currentDirection = Direction::UP;
-                                DebugLogger::log("Vehicle " + id + " now on C1 (turned RIGHT from B)");
+                                DebugLogger::log("Vehicle " + id + " now on C1 (turned LEFT from B3)");
+                            }
+                            else if (destination == Destination::LEFT) {
+                                // BL2(left) → AL1
+                                lane = 'A';
+                                laneNumber = 1;
+                                currentDirection = Direction::DOWN;
+                                DebugLogger::log("Vehicle " + id + " now on A1 (turned LEFT from B2)");
                             }
                             else {
-                                // Going straight to West
+                                // BL2(straight) → DL1
                                 lane = 'D';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on D1 (going STRAIGHT from B)");
+                                DebugLogger::log("Vehicle " + id + " now on D1 (going STRAIGHT from B2)");
                             }
                             break;
 
                         case Direction::RIGHT: // From West (D)
-                            if (destination == Destination::LEFT) {
-                                lane = 'C';  // Go to South
-                                laneNumber = 1;
-                                currentDirection = Direction::UP;
-                                DebugLogger::log("Vehicle " + id + " now on C1 (turned LEFT from D)");
-                            }
-                            else if (destination == Destination::RIGHT) {
-                                lane = 'A';  // Go to North
+                            if (laneNumber == 3) {
+                                // DL3 → AL1
+                                lane = 'A';
                                 laneNumber = 1;
                                 currentDirection = Direction::DOWN;
-                                DebugLogger::log("Vehicle " + id + " now on A1 (turned RIGHT from D)");
+                                DebugLogger::log("Vehicle " + id + " now on A1 (turned LEFT from D3)");
+                            }
+                            else if (destination == Destination::LEFT) {
+                                // DL2(left) → CL1
+                                lane = 'C';
+                                laneNumber = 1;
+                                currentDirection = Direction::UP;
+                                DebugLogger::log("Vehicle " + id + " now on C1 (turned LEFT from D2)");
                             }
                             else {
-                                // Going straight to East
+                                // DL2(straight) → BL1
                                 lane = 'B';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on B1 (going STRAIGHT from D)");
+                                DebugLogger::log("Vehicle " + id + " now on B1 (going STRAIGHT from D2)");
                             }
                             break;
                     }
@@ -616,48 +693,66 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
     // Store queue position for use in update method
     this->queuePos = queuePos;
 
-    // ENHANCED VEHICLE VISUALIZATION
-    // Set different colors for each lane and destination for clear visual distinction
+    // ENHANCED VEHICLE RENDERING FOR BETTER VISUALIZATION
     SDL_Color color;
 
+    // STEP 1: Choose appropriate vehicle color based on lane and type
     if (isEmergency) {
-        // Emergency vehicles are bright red with high visibility
-        color = {255, 0, 0, 255}; // Bright red
+        // Emergency vehicles are bright red
+        color = {255, 0, 0, 255};
     }
     else {
-        // Base color determined by lane identity
+        // Base color determined by lane and lane number
         switch (lane) {
-            case 'A': // North Road
-                if (laneNumber == 1) color = {100, 149, 237, 255}; // Cornflower Blue for A1
-                else if (laneNumber == 2) color = {255, 140, 0, 255}; // Orange for A2 (Priority)
-                else color = {50, 205, 50, 255}; // Lime Green for A3 (Free)
+            case 'A': // North road
+                if (laneNumber == 1) {
+                    color = {30, 144, 255, 255}; // Dodger Blue for A1
+                } else if (laneNumber == 2) {
+                    // AL2 is priority lane - orange
+                    color = {255, 140, 0, 255}; // Orange for A2 (Priority)
+                } else {
+                    // Free lane - green
+                    color = {50, 205, 50, 255}; // Lime Green for A3 (Free)
+                }
                 break;
 
-            case 'B': // East Road
-                if (laneNumber == 1) color = {75, 0, 130, 255}; // Indigo for B1
-                else if (laneNumber == 2) color = {218, 165, 32, 255}; // Goldenrod for B2
-                else color = {34, 139, 34, 255}; // Forest Green for B3 (Free)
+            case 'B': // East road
+                if (laneNumber == 1) {
+                    color = {75, 0, 130, 255}; // Indigo for B1
+                } else if (laneNumber == 2) {
+                    color = {218, 165, 32, 255}; // Goldenrod for B2
+                } else {
+                    color = {34, 139, 34, 255}; // Forest Green for B3 (Free)
+                }
                 break;
 
-            case 'C': // South Road
-                if (laneNumber == 1) color = {30, 144, 255, 255}; // Dodger Blue for C1
-                else if (laneNumber == 2) color = {210, 105, 30, 255}; // Chocolate for C2
-                else color = {60, 179, 113, 255}; // Medium Sea Green for C3 (Free)
+            case 'C': // South road
+                if (laneNumber == 1) {
+                    color = {30, 144, 255, 255}; // Dodger Blue for C1
+                } else if (laneNumber == 2) {
+                    color = {210, 105, 30, 255}; // Chocolate for C2
+                } else {
+                    color = {60, 179, 113, 255}; // Medium Sea Green for C3 (Free)
+                }
                 break;
 
-            case 'D': // West Road
-                if (laneNumber == 1) color = {138, 43, 226, 255}; // Blue Violet for D1
-                else if (laneNumber == 2) color = {205, 133, 63, 255}; // Peru for D2
-                else color = {46, 139, 87, 255}; // Sea Green for D3 (Free)
+            case 'D': // West road
+                if (laneNumber == 1) {
+                    color = {138, 43, 226, 255}; // Blue Violet for D1
+                } else if (laneNumber == 2) {
+                    color = {205, 133, 63, 255}; // Peru for D2
+                } else {
+                    color = {46, 139, 87, 255}; // Sea Green for D3 (Free)
+                }
                 break;
 
             default:
-                color = {192, 192, 192, 255}; // Silver (default)
+                color = {150, 150, 150, 255}; // Grey default
                 break;
         }
     }
 
-    // Brighter colors when turning for better visibility
+    // Make vehicles brighter when turning for better visibility
     if (turning) {
         color.r = std::min(255, color.r + 40);
         color.g = std::min(255, color.g + 40);
@@ -667,20 +762,20 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
     // Set color for vehicle body
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
 
-    // Enhanced vehicle dimensions for better visibility
-    float vehicleWidth = 10.0f;  // Wider for better visibility
-    float vehicleLength = 20.0f; // Longer for better visibility
+    // STEP 2: Determine vehicle dimensions - LARGER for better visibility
+    float vehicleWidth = 12.0f;  // Wider than original
+    float vehicleLength = 24.0f; // Longer than original
 
-    // Draw vehicle rectangle based on orientation
+    // STEP 3: Create vehicle rectangle based on orientation
     SDL_FRect vehicleRect;
 
     if (turning) {
-        // For turning vehicles, adjust dimensions gradually
+        // For turning vehicles, adjust dimensions gradually for smooth turns
         float progress = turnProgress;
         float width = vehicleWidth;
         float length = vehicleLength;
 
-        // During turn, gradually change dimensions for smoother appearance
+        // During turn, gradually change dimensions
         if (currentDirection == Direction::UP || currentDirection == Direction::DOWN) {
             // Transitioning from vertical to horizontal
             if (destination == Destination::LEFT || destination == Destination::RIGHT) {
@@ -712,170 +807,159 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
         }
     }
 
-    // Draw the vehicle body
+    // STEP 4: Draw the vehicle body with border
     SDL_RenderFillRect(renderer, &vehicleRect);
 
-    // Draw lane number indicators as distinctive marks
-    // This makes it very clear which lane the vehicle is in
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White for indicators
+    // Add border outline for better definition
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Black border
+    SDL_RenderRect(renderer, &vehicleRect);
 
-    // Choose indicator position based on vehicle orientation
-    float indicatorSize = 3.0f;
-    float indicatorSpacing = 6.0f;
-
-    for (int i = 0; i < laneNumber; i++) {
-        SDL_FRect indicator;
-
-        switch (currentDirection) {
-            case Direction::DOWN:
-                indicator = {
-                    vehicleRect.x + vehicleRect.w/2 - indicatorSize/2,
-                    vehicleRect.y + i * indicatorSpacing + 4.0f,
-                    indicatorSize,
-                    indicatorSize
-                };
-                break;
-            case Direction::UP:
-                indicator = {
-                    vehicleRect.x + vehicleRect.w/2 - indicatorSize/2,
-                    vehicleRect.y + vehicleRect.h - i * indicatorSpacing - 4.0f - indicatorSize,
-                    indicatorSize,
-                    indicatorSize
-                };
-                break;
-            case Direction::LEFT:
-                indicator = {
-                    vehicleRect.x + vehicleRect.w - i * indicatorSpacing - 4.0f - indicatorSize,
-                    vehicleRect.y + vehicleRect.h/2 - indicatorSize/2,
-                    indicatorSize,
-                    indicatorSize
-                };
-                break;
-            case Direction::RIGHT:
-                indicator = {
-                    vehicleRect.x + i * indicatorSpacing + 4.0f,
-                    vehicleRect.y + vehicleRect.h/2 - indicatorSize/2,
-                    indicatorSize,
-                    indicatorSize
-                };
-                break;
-        }
-
-        SDL_RenderFillRect(renderer, &indicator);
-    }
-
-    // Draw destination indicator - very visible arrows showing where vehicle is going
-    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Bright yellow for direction indicators
+    // STEP 5: Draw destination indicator - VERY CLEAR directional arrows
+    // This shows exactly where each vehicle is going - LEFT or STRAIGHT
 
     if (destination == Destination::LEFT) {
-        // Left turn arrow
+        // LEFT TURN indicator - arrow pointing left relative to vehicle direction
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Bright yellow
+
+        // Draw left arrow based on vehicle direction
         SDL_FPoint arrow[3];
+        int arrowSize = 8; // Larger arrow for better visibility
 
         switch (currentDirection) {
-            case Direction::DOWN: // A→D (North to West)
-                arrow[0] = {vehicleRect.x, vehicleRect.y + 8.0f}; // Point
-                arrow[1] = {vehicleRect.x + 6.0f, vehicleRect.y + 8.0f - 4.0f}; // Top wing
-                arrow[2] = {vehicleRect.x + 6.0f, vehicleRect.y + 8.0f + 4.0f}; // Bottom wing
+            case Direction::DOWN: // From North (A)
+                // Draw on left side of vehicle
+                arrow[0] = {vehicleRect.x, vehicleRect.y + vehicleRect.h/3}; // Point
+                arrow[1] = {vehicleRect.x + arrowSize, vehicleRect.y + vehicleRect.h/3 - arrowSize/2}; // Top
+                arrow[2] = {vehicleRect.x + arrowSize, vehicleRect.y + vehicleRect.h/3 + arrowSize/2}; // Bottom
                 break;
 
-            case Direction::UP: // C→B (South to East)
-                arrow[0] = {vehicleRect.x + vehicleRect.w, vehicleRect.y + vehicleRect.h - 8.0f}; // Point
-                arrow[1] = {vehicleRect.x + vehicleRect.w - 6.0f, vehicleRect.y + vehicleRect.h - 8.0f - 4.0f}; // Top wing
-                arrow[2] = {vehicleRect.x + vehicleRect.w - 6.0f, vehicleRect.y + vehicleRect.h - 8.0f + 4.0f}; // Bottom wing
+            case Direction::UP: // From South (C)
+                // Draw on right side of vehicle
+                arrow[0] = {vehicleRect.x + vehicleRect.w, vehicleRect.y + vehicleRect.h*2/3};
+                arrow[1] = {vehicleRect.x + vehicleRect.w - arrowSize, vehicleRect.y + vehicleRect.h*2/3 - arrowSize/2};
+                arrow[2] = {vehicleRect.x + vehicleRect.w - arrowSize, vehicleRect.y + vehicleRect.h*2/3 + arrowSize/2};
                 break;
 
-            case Direction::LEFT: // B→A (East to North)
-                arrow[0] = {vehicleRect.x + 8.0f, vehicleRect.y}; // Point
-                arrow[1] = {vehicleRect.x + 8.0f - 4.0f, vehicleRect.y + 6.0f}; // Left wing
-                arrow[2] = {vehicleRect.x + 8.0f + 4.0f, vehicleRect.y + 6.0f}; // Right wing
+            case Direction::LEFT: // From East (B)
+                // Draw on left side of vehicle
+                arrow[0] = {vehicleRect.x + vehicleRect.w/3, vehicleRect.y};
+                arrow[1] = {vehicleRect.x + vehicleRect.w/3 - arrowSize/2, vehicleRect.y + arrowSize};
+                arrow[2] = {vehicleRect.x + vehicleRect.w/3 + arrowSize/2, vehicleRect.y + arrowSize};
                 break;
 
-            case Direction::RIGHT: // D→C (West to South)
-                arrow[0] = {vehicleRect.x + vehicleRect.w - 8.0f, vehicleRect.y + vehicleRect.h}; // Point
-                arrow[1] = {vehicleRect.x + vehicleRect.w - 8.0f - 4.0f, vehicleRect.y + vehicleRect.h - 6.0f}; // Left wing
-                arrow[2] = {vehicleRect.x + vehicleRect.w - 8.0f + 4.0f, vehicleRect.y + vehicleRect.h - 6.0f}; // Right wing
+            case Direction::RIGHT: // From West (D)
+                // Draw on right side of vehicle
+                arrow[0] = {vehicleRect.x + vehicleRect.w*2/3, vehicleRect.y + vehicleRect.h};
+                arrow[1] = {vehicleRect.x + vehicleRect.w*2/3 - arrowSize/2, vehicleRect.y + vehicleRect.h - arrowSize};
+                arrow[2] = {vehicleRect.x + vehicleRect.w*2/3 + arrowSize/2, vehicleRect.y + vehicleRect.h - arrowSize};
                 break;
         }
 
+        // Draw triangle
         SDL_RenderFillTriangleF(renderer, arrow[0].x, arrow[0].y, arrow[1].x, arrow[1].y, arrow[2].x, arrow[2].y);
     }
-    else if (destination == Destination::RIGHT) {
-        // Right turn arrow
-        SDL_FPoint arrow[3];
+    else if (destination == Destination::STRAIGHT) {
+        // STRAIGHT indicator - double parallel lines
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Bright yellow
 
-        switch (currentDirection) {
-            case Direction::DOWN: // A→B (North to East)
-                arrow[0] = {vehicleRect.x + vehicleRect.w, vehicleRect.y + 8.0f}; // Point
-                arrow[1] = {vehicleRect.x + vehicleRect.w - 6.0f, vehicleRect.y + 8.0f - 4.0f}; // Top wing
-                arrow[2] = {vehicleRect.x + vehicleRect.w - 6.0f, vehicleRect.y + 8.0f + 4.0f}; // Bottom wing
-                break;
-
-            case Direction::UP: // C→D (South to West)
-                arrow[0] = {vehicleRect.x, vehicleRect.y + vehicleRect.h - 8.0f}; // Point
-                arrow[1] = {vehicleRect.x + 6.0f, vehicleRect.y + vehicleRect.h - 8.0f - 4.0f}; // Top wing
-                arrow[2] = {vehicleRect.x + 6.0f, vehicleRect.y + vehicleRect.h - 8.0f + 4.0f}; // Bottom wing
-                break;
-
-            case Direction::LEFT: // B→C (East to South)
-                arrow[0] = {vehicleRect.x + 8.0f, vehicleRect.y + vehicleRect.h}; // Point
-                arrow[1] = {vehicleRect.x + 8.0f - 4.0f, vehicleRect.y + vehicleRect.h - 6.0f}; // Left wing
-                arrow[2] = {vehicleRect.x + 8.0f + 4.0f, vehicleRect.y + vehicleRect.h - 6.0f}; // Right wing
-                break;
-
-            case Direction::RIGHT: // D→A (West to North)
-                arrow[0] = {vehicleRect.x + vehicleRect.w - 8.0f, vehicleRect.y}; // Point
-                arrow[1] = {vehicleRect.x + vehicleRect.w - 8.0f - 4.0f, vehicleRect.y + 6.0f}; // Left wing
-                arrow[2] = {vehicleRect.x + vehicleRect.w - 8.0f + 4.0f, vehicleRect.y + 6.0f}; // Right wing
-                break;
-        }
-
-        SDL_RenderFillTriangleF(renderer, arrow[0].x, arrow[0].y, arrow[1].x, arrow[1].y, arrow[2].x, arrow[2].y);
-    }
-    else {
-        // Straight indicator (double parallel lines)
-        SDL_FRect lineA, lineB;
-        float lineWidth = 2.0f;
+        SDL_FRect line1, line2;
+        float lineWidth = 2.5f;
         float lineLength = 8.0f;
-        float lineSpacing = 4.0f;
+        float lineGap = 4.0f;
 
         switch (currentDirection) {
             case Direction::DOWN:
-                lineA = {vehicleRect.x + vehicleRect.w/3, vehicleRect.y + 5.0f, lineWidth, lineLength};
-                lineB = {vehicleRect.x + 2*vehicleRect.w/3, vehicleRect.y + 5.0f, lineWidth, lineLength};
+                // Two vertical lines on top part of vehicle
+                line1 = {vehicleRect.x + vehicleRect.w*0.33f, vehicleRect.y + 5.0f, lineWidth, lineLength};
+                line2 = {vehicleRect.x + vehicleRect.w*0.67f, vehicleRect.y + 5.0f, lineWidth, lineLength};
                 break;
+
             case Direction::UP:
-                lineA = {vehicleRect.x + vehicleRect.w/3, vehicleRect.y + vehicleRect.h - 5.0f - lineLength, lineWidth, lineLength};
-                lineB = {vehicleRect.x + 2*vehicleRect.w/3, vehicleRect.y + vehicleRect.h - 5.0f - lineLength, lineWidth, lineLength};
+                // Two vertical lines on bottom part of vehicle
+                line1 = {vehicleRect.x + vehicleRect.w*0.33f, vehicleRect.y + vehicleRect.h - lineLength - 5.0f, lineWidth, lineLength};
+                line2 = {vehicleRect.x + vehicleRect.w*0.67f, vehicleRect.y + vehicleRect.h - lineLength - 5.0f, lineWidth, lineLength};
                 break;
+
             case Direction::LEFT:
-                lineA = {vehicleRect.x + vehicleRect.w - 5.0f - lineLength, vehicleRect.y + vehicleRect.h/3, lineLength, lineWidth};
-                lineB = {vehicleRect.x + vehicleRect.w - 5.0f - lineLength, vehicleRect.y + 2*vehicleRect.h/3, lineLength, lineWidth};
+                // Two horizontal lines on right part of vehicle
+                line1 = {vehicleRect.x + vehicleRect.w - lineLength - 5.0f, vehicleRect.y + vehicleRect.h*0.33f, lineLength, lineWidth};
+                line2 = {vehicleRect.x + vehicleRect.w - lineLength - 5.0f, vehicleRect.y + vehicleRect.h*0.67f, lineLength, lineWidth};
                 break;
+
             case Direction::RIGHT:
-                lineA = {vehicleRect.x + 5.0f, vehicleRect.y + vehicleRect.h/3, lineLength, lineWidth};
-                lineB = {vehicleRect.x + 5.0f, vehicleRect.y + 2*vehicleRect.h/3, lineLength, lineWidth};
+                // Two horizontal lines on left part of vehicle
+                line1 = {vehicleRect.x + 5.0f, vehicleRect.y + vehicleRect.h*0.33f, lineLength, lineWidth};
+                line2 = {vehicleRect.x + 5.0f, vehicleRect.y + vehicleRect.h*0.67f, lineLength, lineWidth};
                 break;
         }
 
-        SDL_RenderFillRect(renderer, &lineA);
-        SDL_RenderFillRect(renderer, &lineB);
+        SDL_RenderFillRect(renderer, &line1);
+        SDL_RenderFillRect(renderer, &line2);
     }
 
-    // Draw lane ID text (letter+number)
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White
-    // drawText not implemented - would need custom text rendering
+    // STEP 6: Add lane number indicators as distinctive marks
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White for indicators
 
-    // We can draw a lane identifier with points/shapes instead
+    float dotSize = 4.0f; // Larger dots
+    float dotSpacing = 6.0f;
+
+    // Draw dots corresponding to lane number
+    for (int i = 0; i < laneNumber; i++) {
+        SDL_FRect dot;
+
+        // Position depends on vehicle orientation
+        switch (currentDirection) {
+            case Direction::DOWN:
+                dot = {
+                    vehicleRect.x + vehicleRect.w/2 - dotSize/2,
+                    vehicleRect.y + vehicleRect.h - 10.0f - i * dotSpacing,
+                    dotSize,
+                    dotSize
+                };
+                break;
+
+            case Direction::UP:
+                dot = {
+                    vehicleRect.x + vehicleRect.w/2 - dotSize/2,
+                    vehicleRect.y + 10.0f + i * dotSpacing,
+                    dotSize,
+                    dotSize
+                };
+                break;
+
+            case Direction::LEFT:
+                dot = {
+                    vehicleRect.x + 10.0f + i * dotSpacing,
+                    vehicleRect.y + vehicleRect.h/2 - dotSize/2,
+                    dotSize,
+                    dotSize
+                };
+                break;
+
+            case Direction::RIGHT:
+                dot = {
+                    vehicleRect.x + vehicleRect.w - 10.0f - i * dotSpacing,
+                    vehicleRect.y + vehicleRect.h/2 - dotSize/2,
+                    dotSize,
+                    dotSize
+                };
+                break;
+        }
+
+        SDL_RenderFillRect(renderer, &dot);
+    }
+
+    // STEP 7: Emergency vehicle indicators (if applicable)
     if (isEmergency) {
         // Draw a cross symbol for emergency vehicles
-        float crossSize = 6.0f;
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White
+
+        float crossSize = 8.0f;
         SDL_FRect crossV, crossH;
 
-        // Position at center of vehicle
-        crossH = {turnPosX - crossSize/2, turnPosY - 1.0f, crossSize, 2.0f};
-        crossV = {turnPosX - 1.0f, turnPosY - crossSize/2, 2.0f, crossSize};
+        crossH = {turnPosX - crossSize/2, turnPosY - 1.5f, crossSize, 3.0f};
+        crossV = {turnPosX - 1.5f, turnPosY - crossSize/2, 3.0f, crossSize};
 
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White
         SDL_RenderFillRect(renderer, &crossH);
         SDL_RenderFillRect(renderer, &crossV);
     }
@@ -883,10 +967,10 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
 
 // Helper for drawing triangles (SDL3 compatible)
 void Vehicle::SDL_RenderFillTriangleF(SDL_Renderer* renderer, float x1, float y1, float x2, float y2, float x3, float y3) {
-    // Convert to array of SDL_Vertex for SDL_RenderGeometry
+    // Create vertices for rendering with SDL_RenderGeometry
     SDL_Vertex vertices[3];
 
-    // Create a color in SDL_FColor format
+    // Create color with normalized values (0.0-1.0)
     SDL_FColor fcolor = {
         1.0f,  // r (normalized to 0.0-1.0)
         1.0f,  // g
@@ -894,17 +978,15 @@ void Vehicle::SDL_RenderFillTriangleF(SDL_Renderer* renderer, float x1, float y1
         1.0f   // a
     };
 
-    // First vertex
+    // Set vertices
     vertices[0].position.x = x1;
     vertices[0].position.y = y1;
     vertices[0].color = fcolor;
 
-    // Second vertex
     vertices[1].position.x = x2;
     vertices[1].position.y = y2;
     vertices[1].color = fcolor;
 
-    // Third vertex
     vertices[2].position.x = x3;
     vertices[2].position.y = y3;
     vertices[2].color = fcolor;
