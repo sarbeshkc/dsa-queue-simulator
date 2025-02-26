@@ -1,34 +1,46 @@
-// include/core/Lane.h
-#pragma once
-#include "Vehicle.h"
-#include "utils/Queue.h"
-#include <memory>
+#ifndef LANE_H
+#define LANE_H
+
+#include <queue>
+#include <mutex>
 #include <string>
+#include "core/Vehicle.h"
 
 class Lane {
-private:
-    LaneId id;
-    Queue<std::shared_ptr<Vehicle>> vehicleQueue;
-    bool isPriority;
-    std::string dataFile;
-    float waitTime;  // Track the average wait time for this lane
-    bool isFreeLane;  // Flag for 3rd lanes that can freely turn left
-
 public:
-    Lane(LaneId id, bool isPriority);
+    Lane(char laneId, int laneNumber);
+    ~Lane();
 
-    void addVehicle(std::shared_ptr<Vehicle> vehicle);
-    std::shared_ptr<Vehicle> removeVehicle();
-    Direction getVehicleDirection(size_t index) const;
-    size_t getQueueSize() const;
+    // Queue operations
+    void enqueue(Vehicle* vehicle);
+    Vehicle* dequeue();
+    Vehicle* peek() const;
+    bool isEmpty() const;
+    int getVehicleCount() const;
+
+    // Priority related operations
+    int getPriority() const;
+    void updatePriority();
     bool isPriorityLane() const;
-    LaneId getId() const;
-    const std::string& getDataFile() const;
-    void update(float deltaTime);
-    bool isFreeLaneType() const;
-    float getAverageWaitTime() const;
-    void updateVehicleWaitTimes(float deltaTime);
-    bool exceedsPriorityThreshold() const;  // Check if lane exceeds priority threshold
-    bool isBelowNormalThreshold() const;    // Check if lane is below normal threshold
+
+    // Lane identification
+    char getLaneId() const;
+    int getLaneNumber() const;
+    std::string getName() const;
+
+    // Iterate through vehicles for rendering
+    const std::vector<Vehicle*>& getVehicles() const;
+
+private:
+    char laneId;               // A, B, C, or D
+    int laneNumber;            // 1, 2, or 3
+    bool isPriority;           // Is this a priority lane (AL2)
+    int priority;              // Current priority (higher means served first)
+    std::vector<Vehicle*> vehicles; // Storage for vehicles in the lane
+    mutable std::mutex mutex;  // For thread safety
+
+    // Update vehicle positions based on traffic light state
+    void updateVehiclePositions();
 };
-;
+
+#endif // LANE_H

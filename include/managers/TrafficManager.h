@@ -1,82 +1,85 @@
-// include/managers/TrafficManager.h
-#pragma once
-#include "core/Constants.h"
+#ifndef TRAFFIC_MANAGER_H
+#define TRAFFIC_MANAGER_H
+
+#include <vector>
+#include <map>
+#include <atomic>
+#include <memory>
+#include <string>
+
 #include "core/Lane.h"
 #include "core/TrafficLight.h"
-#include "core/Vehicle.h"
 #include "managers/FileHandler.h"
-#include "utils/PriorityQueue.h"
-#include <vector>
-#include <memory>
-#include <map>
-#include <chrono>
 
 class TrafficManager {
 public:
     TrafficManager();
-    ~TrafficManager() = default;
+    ~TrafficManager();
 
-    // Core update methods
-    void update(float deltaTime);
-    void addVehicleToLane(LaneId laneId, std::shared_ptr<Vehicle> vehicle);
-    size_t getLaneSize(LaneId laneId) const;
+    // Initialize the manager
+    bool initialize();
 
-    // State queries
-    bool isInPriorityMode() const { return inPriorityMode; }
-    const std::vector<std::unique_ptr<Lane>>& getLanes() const { return lanes; }
-    const std::map<LaneId, TrafficLight>& getTrafficLights() const { return trafficLights; }
-    const std::map<uint32_t, std::shared_ptr<Vehicle>>& getActiveVehicles() const { return activeVehicles; }
+    // Start the manager
+    void start();
 
-    // Stats queries
-    float getAverageWaitingTime() const;
-    size_t getTotalVehiclesProcessed() const { return totalVehiclesProcessed; }
+    // Stop the manager
+    void stop();
+
+    // Update the traffic state - now does file checking and priority updates
+    void update(uint32_t delta);
+
+    // Get the lanes for rendering
+    const std::vector<Lane*>& getLanes() const;
+
+    // Get the traffic light
+    TrafficLight* getTrafficLight() const;
+
+    // Check if a lane is being prioritized
+    bool isLanePrioritized(char laneId, int laneNumber) const;
+
+    // Get the priority lane
+    Lane* getPriorityLane() const;
+
+    // Get statistics for display
+    std::string getStatistics() const;
 
 private:
-    // Core components
-    std::vector<std::unique_ptr<Lane>> lanes;
-    std::map<LaneId, TrafficLight> trafficLights;
-    std::map<uint32_t, std::shared_ptr<Vehicle>> activeVehicles;
-    FileHandler fileHandler;
-    PriorityQueue<LaneId> laneQueue;
+    // Lanes for each road
+    std::vector<Lane*> lanes;
 
-    // State tracking
-    bool inPriorityMode;
-    float stateTimer;
-    float lastUpdateTime;
-    float processingTimer;
-    size_t totalVehiclesProcessed;
-    float averageWaitTime;
+    // Traffic light
+    TrafficLight* trafficLight;
 
-    // Traffic flow methods
-    void processNewVehicles();
-    void processPriorityLane();
-    void processNormalLanes(size_t vehicleCount);
-    void processFreeLanes();
-    void checkWaitTimes();
-    size_t calculateVehiclesToProcess() const;
-    void updateVehiclePositions(float deltaTime);
-    void updateLaneQueue();
-    bool checkCollision(const std::shared_ptr<Vehicle>& vehicle, float newX, float newY) const;
+    // File handler for reading vehicle data
+    FileHandler* fileHandler;
 
-    // Traffic light methods
-    void updateTrafficLights(float deltaTime);
-    void synchronizeTrafficLights();
-    void handleStateTransition(float deltaTime);
-    bool checkPriorityConditions() const;
-    bool canVehicleMove(const std::shared_ptr<Vehicle>& vehicle) const;
-    LightState getLightStateForLane(LaneId laneId) const;
+    // Flag to indicate if the manager is running
+    std::atomic<bool> running;
 
-    // Vehicle processing
-    void updateVehicleTurns(float deltaTime);
-    LaneId determineOptimalLane(Direction direction, LaneId sourceLane) const;
-    bool isValidSpawnLane(LaneId laneId, Direction direction) const;
-    bool isFreeLane(LaneId laneId) const;
-    Lane* getPriorityLane() const;
-    void removeVehicle(uint32_t vehicleId);
-    void setupVehicleTurn(std::shared_ptr<Vehicle> vehicle);
+    // Time tracking for periodic operations
+    uint32_t lastFileCheckTime;
+    uint32_t lastPriorityUpdateTime;
 
-    // Utility methods
-    void updateTimers(float deltaTime);
-    void updateStatistics(float deltaTime);
-    void cleanupFinishedVehicles();
+    // Read vehicles from files - now called directly from update()
+    void readVehicles();
+
+    // Update lane priorities - now called directly from update()
+    void updatePriorities();
+
+    // Add a vehicle to the appropriate lane
+    void addVehicle(Vehicle* vehicle);
+
+    // Process vehicles in lanes
+    void processVehicles(uint32_t delta);
+
+    // Check for vehicles leaving the simulation
+    void checkVehicleBoundaries();
+
+    // Handle vehicle turning logic
+    void handleVehicleTurning(Vehicle* vehicle);
+
+    // Find lane by ID and number
+    Lane* findLane(char laneId, int laneNumber) const;
 };
+
+#endif // TRAFFIC_MANAGER_H

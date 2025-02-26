@@ -1,0 +1,2378 @@
+// Project Code from CMakeLists.txt
+// Total files: 15
+
+//===== FILE: src/main.cpp =====//
+
+#include <iostream>
+#include <string>
+#include <thread>
+#include <chrono>
+#include <SDL3/SDL.h>
+#include <fstream>
+#include <filesystem>
+#include <vector>
+#include <map>
+#include <algorithm>
+#include <random>
+#include <cmath>
+
+// Include the necessary headers to maintain the architecture
+#include "utils/DebugLogger.h"
+
+namespace fs = std::filesystem;
+
+// Forward declarations of classes we'll implement internally
+class Vehicle;
+class Lane;
+class TrafficLight;
+class TrafficManager;
+class Renderer;
+class FileHandler;
+
+// Constants
+const int WINDOW_WIDTH = 800;
+const int WINDOW_HEIGHT = 800;
+const std::string DATA_DIR = "data/lanes";
+const int PRIORITY_THRESHOLD_HIGH = 10;
+const int PRIORITY_THRESHOLD_LOW = 5;
+
+// Car colors for variety
+const SDL_Color CAR_COLORS[] = {
+    {200, 0, 0, 255},    // Red
+    {0, 0, 200, 255},    // Blue
+    {0, 150, 0, 255},    // Green
+    {150, 150, 0, 255},  // Yellow
+    {100, 100, 100, 255},// Gray
+    {0, 150, 150, 255},  // Teal
+    {150, 0, 150, 255},  // Purple
+    {200, 100, 0, 255},  // Orange
+    {0, 0, 0, 255}       // Black
+};
+const int NUM_CAR_COLORS = 9;
+
+// Road colors
+const SDL_Color ROAD_COLOR = {60, 60, 60, 255};
+const SDL_Color LANE_MARKER_COLOR = {255, 255, 255, 255};
+const SDL_Color YELLOW_MARKER_COLOR = {255, 255, 0, 255};
+const SDL_Color INTERSECTION_COLOR = {50, 50, 50, 255};
+const SDL_Color SIDEWALK_COLOR = {180, 180, 180, 255};
+const SDL_Color GRASS_COLOR = {100, 200, 100, 255};
+
+// Simple logging function
+void log_message(const std::string& msg) {
+    std::cout << "[Simulator] " << msg << std::endl;
+
+    // Also log to file
+    std::ofstream log("simulator_debug.log", std::ios::app);
+    if (log.is_open()) {
+        log << "[Simulator] " << msg << std::endl;
+        log.close();
+    }
+
+    // Also use DebugLogger
+    DebugLogger::log(msg);
+}
+
+// Ensure data directories exist
+bool ensure_directories() {
+    try {
+        if (!fs::exists(DATA_DIR)) {
+            fs::create_directories(DATA_DIR);
+            log_message("Created directory: " + DATA_DIR);
+        }
+        return true;
+    } catch (const std::exception& e) {
+        log_message("Error creating directories: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// Create a random number generator
+std::mt19937 rng(std::random_device{}());
+
+// Basic Vehicle class to match the architecture
+class Vehicle {
+public:
+    std::string id;
+    char lane;
+    int laneNumber;
+    float x, y;
+    float speed;
+    bool isProcessed;
+    SDL_Color color;
+
+    Vehicle(const std::string& id, char lane, int laneNumber)
+        : id(id), lane(lane), laneNumber(laneNumber), speed(0.5f), isProcessed(false) {
+
+        // Assign a random color to the vehicle
+        std::uniform_int_distribution<int> dist(0, NUM_CAR_COLORS - 1);
+        color = CAR_COLORS[dist(rng)];
+
+        // Set initial position based on lane
+        if (lane == 'A') {
+            x = WINDOW_WIDTH/2 + (laneNumber-2)*50;
+            y = 0;
+        } else if (lane == 'B') {
+            x = WINDOW_WIDTH/2 - (laneNumber-2)*50;
+            y = WINDOW_HEIGHT;
+        } else if (lane == 'C') {
+            x = WINDOW_WIDTH;
+            y = WINDOW_HEIGHT/2 + (laneNumber-2)*50;
+        } else if (lane == 'D') {
+            x = 0;
+            y = WINDOW_HEIGHT/2 - (laneNumber-2)*50;
+        }
+    }
+
+    // Method to move the vehicle based on traffic light
+    void update(uint32_t delta, bool isGreenLight, float targetPos) {
+        // Scale speed by delta time for consistent movement regardless of frame rate
+        float scaledSpeed = speed * (delta / 16.0f);
+
+        // Simple movement based on lane
+        if (isGreenLight || isFreeLane()) {
+            if (lane == 'A') y += scaledSpeed;
+            else if (lane == 'B') y -= scaledSpeed;
+            else if (lane == 'C') x -= scaledSpeed;
+            else if (lane == 'D') x += scaledSpeed;
+        } else {
+            // Move until close to intersection then stop
+            if (lane == 'A' && y < WINDOW_HEIGHT/2 - 90) {
+                y += scaledSpeed;
+            } else if (lane == 'B' && y > WINDOW_HEIGHT/2 + 90) {
+                y -= scaledSpeed;
+            } else if (lane == 'C' && x > WINDOW_WIDTH/2 + 90) {
+                x -= scaledSpeed;
+            } else if (lane == 'D' && x < WINDOW_WIDTH/2 - 90) {
+                x += scaledSpeed;
+            }
+        }
+    }
+
+    // Check if vehicle is off-screen
+    bool isOffScreen() const {
+        return x < -50 || x > WINDOW_WIDTH + 50 || y < -50 || y > WINDOW_HEIGHT + 50;
+    }
+
+    // Check if this is a free lane (lane 3 always has green light)
+    bool isFreeLane() const {
+        return laneNumber == 3;
+    }
+
+    // Draw the vehicle (car shape)
+    void render(SDL_Renderer* renderer) const {
+        // Base car dimensions
+        const int CAR_LENGTH = 24;
+        const int CAR_WIDTH = 12;
+
+        // Set color for vehicle
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+
+        // Calculate the rotation angle based on the lane
+        float angle = 0.0f;
+        if (lane == 'A') angle = 180.0f; // Facing down
+        else if (lane == 'B') angle = 0.0f; // Facing up
+        else if (lane == 'C') angle = 90.0f; // Facing left
+        else if (lane == 'D') angle = 270.0f; // Facing right
+
+        // Car body
+        // For simplicity, we'll draw a rotated rectangle
+        // In a real application, you might use a texture or more complex shape
+
+        // Draw car body
+        SDL_FRect carBody;
+        if (lane == 'A' || lane == 'B') {
+            // Vertical movement - longer in y direction
+            carBody = {x - CAR_WIDTH/2, y - CAR_LENGTH/2, (float)CAR_WIDTH, (float)CAR_LENGTH};
+        } else {
+            // Horizontal movement - longer in x direction
+            carBody = {x - CAR_LENGTH/2, y - CAR_WIDTH/2, (float)CAR_LENGTH, (float)CAR_WIDTH};
+        }
+        SDL_RenderFillRect(renderer, &carBody);
+
+        // Draw car roof (slightly darker)
+        SDL_SetRenderDrawColor(renderer,
+            (Uint8)(color.r * 0.7),
+            (Uint8)(color.g * 0.7),
+            (Uint8)(color.b * 0.7),
+            color.a);
+
+        SDL_FRect carRoof;
+        if (lane == 'A' || lane == 'B') {
+            // Roof for vertical cars
+            carRoof = {x - CAR_WIDTH/2 + 2, y - CAR_LENGTH/2 + (lane == 'A' ? 5 : 2),
+                      (float)(CAR_WIDTH - 4), (float)(CAR_LENGTH/2)};
+        } else {
+            // Roof for horizontal cars
+            carRoof = {x - CAR_LENGTH/2 + (lane == 'C' ? 2 : 5), y - CAR_WIDTH/2 + 2,
+                      (float)(CAR_LENGTH/2), (float)(CAR_WIDTH - 4)};
+        }
+        SDL_RenderFillRect(renderer, &carRoof);
+    }
+
+    // Getter methods to match the architecture
+    std::string getId() const { return id; }
+    char getLane() const { return lane; }
+    int getLaneNumber() const { return laneNumber; }
+};
+
+// Simplified Lane class
+class Lane {
+public:
+    char id;
+    int laneNumber;
+    std::vector<Vehicle*> vehicles;
+    bool isPriority;
+    int priority;
+
+    Lane(char id, int laneNumber)
+        : id(id), laneNumber(laneNumber),
+          isPriority(id == 'A' && laneNumber == 2),
+          priority(0) {
+        log_message("Created lane " + std::string(1, id) + std::to_string(laneNumber));
+    }
+
+    ~Lane() {
+        // Clean up vehicles
+        for (auto* vehicle : vehicles) {
+            delete vehicle;
+        }
+        vehicles.clear();
+    }
+
+    // Add a vehicle to the lane
+    void enqueue(Vehicle* vehicle) {
+        vehicles.push_back(vehicle);
+    }
+
+    // Remove the first vehicle from the lane
+    Vehicle* dequeue() {
+        if (vehicles.empty()) {
+            return nullptr;
+        }
+
+        Vehicle* vehicle = vehicles.front();
+        vehicles.erase(vehicles.begin());
+        return vehicle;
+    }
+
+    // Check if the lane is empty
+    bool isEmpty() const {
+        return vehicles.empty();
+    }
+
+    // Get the number of vehicles in the lane
+    int getVehicleCount() const {
+        return vehicles.size();
+    }
+
+    // Get the lane's priority
+    int getPriority() const {
+        return priority;
+    }
+
+    // Update the lane's priority based on vehicle count
+    void updatePriority() {
+        if (isPriority) {
+            int count = getVehicleCount();
+
+            if (count > PRIORITY_THRESHOLD_HIGH) {
+                priority = 100;
+                log_message("Lane " + std::string(1, id) + std::to_string(laneNumber) +
+                           " priority increased (vehicles: " + std::to_string(count) + ")");
+            }
+            else if (count < PRIORITY_THRESHOLD_LOW) {
+                priority = 0;
+                log_message("Lane " + std::string(1, id) + std::to_string(laneNumber) +
+                           " priority reset to normal (vehicles: " + std::to_string(count) + ")");
+            }
+        }
+    }
+
+    // Methods to match the architecture
+    bool isPriorityLane() const { return isPriority; }
+    char getLaneId() const { return id; }
+    int getLaneNumber() const { return laneNumber; }
+    std::string getName() const { return std::string(1, id) + std::to_string(laneNumber); }
+    const std::vector<Vehicle*>& getVehicles() const { return vehicles; }
+};
+
+// Traffic light states to match the architecture
+enum class TrafficLightState {
+    ALL_RED,
+    A_GREEN,
+    B_GREEN,
+    C_GREEN,
+    D_GREEN
+};
+
+// Simplified TrafficLight class
+class TrafficLight {
+public:
+    TrafficLightState currentState;
+    TrafficLightState nextState;
+    uint32_t lastChangeTime;
+    bool isPriorityMode;
+
+    TrafficLight()
+        : currentState(TrafficLightState::ALL_RED),
+          nextState(TrafficLightState::A_GREEN),
+          lastChangeTime(SDL_GetTicks()),
+          isPriorityMode(false) {}
+
+    // Update the traffic light state
+    void update(const std::vector<Lane*>& lanes) {
+        uint32_t currentTime = SDL_GetTicks();
+        uint32_t elapsedTime = currentTime - lastChangeTime;
+
+        // Find AL2 lane to check priority
+        Lane* al2Lane = nullptr;
+        for (auto* lane : lanes) {
+            if (lane->getLaneId() == 'A' && lane->getLaneNumber() == 2) {
+                al2Lane = lane;
+                break;
+            }
+        }
+
+        // Check priority conditions
+        if (al2Lane) {
+            int vehicleCount = al2Lane->getVehicleCount();
+
+            // Enter priority mode
+            if (!isPriorityMode && vehicleCount > PRIORITY_THRESHOLD_HIGH) {
+                isPriorityMode = true;
+                log_message("Priority mode activated: A2 has " + std::to_string(vehicleCount) + " vehicles");
+
+                // If not already serving A, switch to it after ALL_RED
+                if (currentState != TrafficLightState::A_GREEN) {
+                    nextState = TrafficLightState::ALL_RED;
+                }
+            }
+            // Exit priority mode
+            else if (isPriorityMode && vehicleCount < PRIORITY_THRESHOLD_LOW) {
+                isPriorityMode = false;
+                log_message("Priority mode deactivated: A2 now has " + std::to_string(vehicleCount) + " vehicles");
+            }
+        }
+
+        // Calculate appropriate duration
+        int stateDuration;
+        if (currentState == TrafficLightState::ALL_RED) {
+            stateDuration = 2000; // 2 seconds for all red
+        } else {
+            // Find lane vehicle count
+            int vehicleCount = 0;
+            char activeLane = ' ';
+
+            switch (currentState) {
+                case TrafficLightState::A_GREEN: activeLane = 'A'; break;
+                case TrafficLightState::B_GREEN: activeLane = 'B'; break;
+                case TrafficLightState::C_GREEN: activeLane = 'C'; break;
+                case TrafficLightState::D_GREEN: activeLane = 'D'; break;
+                default: break;
+            }
+
+            for (auto* lane : lanes) {
+                if (lane->getLaneId() == activeLane && lane->getLaneNumber() != 3) {
+                    vehicleCount += lane->getVehicleCount();
+                }
+            }
+
+            // Formula from assignment: |V| * t where t is 2 seconds
+            stateDuration = vehicleCount * 2000;
+            if (stateDuration < 3000) stateDuration = 3000; // Min 3 seconds
+            if (stateDuration > 15000) stateDuration = 15000; // Max 15 seconds
+        }
+
+        // State transition
+        if (elapsedTime >= stateDuration) {
+            // Change state
+            currentState = nextState;
+
+            // Determine next state
+            if (isPriorityMode) {
+                // In priority mode, alternate between A_GREEN and ALL_RED
+                if (currentState == TrafficLightState::ALL_RED) {
+                    nextState = TrafficLightState::A_GREEN;
+                } else {
+                    nextState = TrafficLightState::ALL_RED;
+                }
+            } else {
+                // In normal mode, rotate through all lanes
+                if (currentState == TrafficLightState::ALL_RED) {
+                    // Determine which green state to go to next
+                    switch (nextState) {
+                        case TrafficLightState::A_GREEN: nextState = TrafficLightState::B_GREEN; break;
+                        case TrafficLightState::B_GREEN: nextState = TrafficLightState::C_GREEN; break;
+                        case TrafficLightState::C_GREEN: nextState = TrafficLightState::D_GREEN; break;
+                        case TrafficLightState::D_GREEN: nextState = TrafficLightState::A_GREEN; break;
+                        default: nextState = TrafficLightState::A_GREEN; break;
+                    }
+                } else {
+                    // Any green state goes to ALL_RED next
+                    nextState = TrafficLightState::ALL_RED;
+                }
+            }
+
+            // Log state change
+            log_message("Traffic light changed state");
+
+            lastChangeTime = currentTime;
+        }
+    }
+
+    // Check if a specific lane has a green light
+    bool isGreen(char laneId) const {
+        switch (laneId) {
+            case 'A': return currentState == TrafficLightState::A_GREEN;
+            case 'B': return currentState == TrafficLightState::B_GREEN;
+            case 'C': return currentState == TrafficLightState::C_GREEN;
+            case 'D': return currentState == TrafficLightState::D_GREEN;
+            default: return false;
+        }
+    }
+
+    // Draw the traffic lights
+    void render(SDL_Renderer* renderer) const {
+        // Draw traffic light for each road
+        drawTrafficLight(renderer, 'A', isGreen('A'));
+        drawTrafficLight(renderer, 'B', isGreen('B'));
+        drawTrafficLight(renderer, 'C', isGreen('C'));
+        drawTrafficLight(renderer, 'D', isGreen('D'));
+
+        // Priority mode indicator
+        if (isPriorityMode) {
+            SDL_SetRenderDrawColor(renderer, 255, 165, 0, 255); // Orange
+            SDL_FRect priorityIndicator = {10, 10, 30, 30};
+            SDL_RenderFillRect(renderer, &priorityIndicator);
+
+            // Black border
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderRect(renderer, &priorityIndicator);
+        }
+    }
+
+    // Draw a single traffic light
+    void drawTrafficLight(SDL_Renderer* renderer, char road, bool isGreen) const {
+        const int LIGHT_SIZE = 20;
+        const int LIGHT_BOX_WIDTH = 25;
+        const int LIGHT_BOX_HEIGHT = 60;
+
+        // Position based on road
+        int x = 0, y = 0;
+        if (road == 'A') {
+            x = WINDOW_WIDTH/2 + 40;
+            y = WINDOW_HEIGHT/2 - 120;
+        } else if (road == 'B') {
+            x = WINDOW_WIDTH/2 - 65;
+            y = WINDOW_HEIGHT/2 + 60;
+        } else if (road == 'C') {
+            x = WINDOW_WIDTH/2 + 60;
+            y = WINDOW_HEIGHT/2 - 65;
+        } else if (road == 'D') {
+            x = WINDOW_WIDTH/2 - 120;
+            y = WINDOW_HEIGHT/2 + 40;
+        }
+
+        // Traffic light box
+        SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Dark gray
+        SDL_FRect lightBox = {(float)x, (float)y, LIGHT_BOX_WIDTH, LIGHT_BOX_HEIGHT};
+
+        // Rotate the box based on road
+        if (road == 'C' || road == 'D') {
+            // Horizontal roads need horizontal lights
+            lightBox = {(float)x, (float)y, LIGHT_BOX_HEIGHT, LIGHT_BOX_WIDTH};
+        }
+
+        SDL_RenderFillRect(renderer, &lightBox);
+
+        // Black border
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderRect(renderer, &lightBox);
+
+        // Red light (always draw, but dim if not active)
+        SDL_SetRenderDrawColor(renderer, isGreen ? 100 : 255, 0, 0, 255);
+        SDL_FRect redLight;
+
+        // Green light (always draw, but dim if not active)
+        SDL_SetRenderDrawColor(renderer, 0, isGreen ? 255 : 100, 0, 255);
+        SDL_FRect greenLight;
+
+        // Position the lights based on orientation
+        if (road == 'A' || road == 'B') {
+            // Vertical traffic lights
+            redLight = {(float)(x + 2.5), (float)(y + 5), LIGHT_SIZE, LIGHT_SIZE};
+            greenLight = {(float)(x + 2.5), (float)(y + 35), LIGHT_SIZE, LIGHT_SIZE};
+        } else {
+            // Horizontal traffic lights
+            redLight = {(float)(x + 5), (float)(y + 2.5), LIGHT_SIZE, LIGHT_SIZE};
+            greenLight = {(float)(x + 35), (float)(y + 2.5), LIGHT_SIZE, LIGHT_SIZE};
+        }
+
+        SDL_RenderFillRect(renderer, &redLight);
+        SDL_RenderFillRect(renderer, &greenLight);
+
+        // Black borders around lights
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderRect(renderer, &redLight);
+        SDL_RenderRect(renderer, &greenLight);
+    }
+
+    // Methods to match the architecture
+    TrafficLightState getCurrentState() const { return currentState; }
+    TrafficLightState getNextState() const { return nextState; }
+};
+
+// Simplified FileHandler class
+class FileHandler {
+public:
+    std::string dataPath;
+
+    FileHandler(const std::string& path = DATA_DIR) : dataPath(path) {
+        ensure_directories();
+    }
+
+    // Initialize files
+    bool initializeFiles() {
+        try {
+            // Create data directory
+            if (!fs::exists(dataPath)) {
+                fs::create_directories(dataPath);
+            }
+
+            // Create lane files
+            for (char laneId : {'A', 'B', 'C', 'D'}) {
+                std::string filePath = dataPath + "/lane" + laneId + ".txt";
+                if (!fs::exists(filePath)) {
+                    std::ofstream file(filePath);
+                    file.close();
+                }
+            }
+
+            return true;
+        } catch (const std::exception& e) {
+            log_message("Error initializing files: " + std::string(e.what()));
+            return false;
+        }
+    }
+
+    // Read vehicles from files
+    std::vector<Vehicle*> readVehiclesFromFiles() {
+        std::vector<Vehicle*> vehicles;
+
+        for (char laneId : {'A', 'B', 'C', 'D'}) {
+            std::string filePath = dataPath + "/lane" + laneId + ".txt";
+            std::ifstream file(filePath);
+
+            if (!file.is_open()) {
+                continue;
+            }
+
+            std::vector<std::string> lines;
+            std::string line;
+
+            while (std::getline(file, line)) {
+                if (!line.empty()) {
+                    lines.push_back(line);
+                }
+            }
+            file.close();
+
+            // Clear the file
+            std::ofstream clearFile(filePath, std::ios::trunc);
+            clearFile.close();
+
+            // Process lines
+            for (const auto& line : lines) {
+                size_t pos = line.find(":");
+                if (pos == std::string::npos) continue;
+
+                std::string vehicleId = line.substr(0, pos);
+                char lane = line[pos + 1];
+
+                // Extract lane number from ID
+                int laneNumber = 2; // Default
+                if (vehicleId.find("L1") != std::string::npos) {
+                    laneNumber = 1;
+                } else if (vehicleId.find("L3") != std::string::npos) {
+                    laneNumber = 3;
+                }
+
+                // Create vehicle
+                vehicles.push_back(new Vehicle(vehicleId, lane, laneNumber));
+            }
+        }
+
+        return vehicles;
+    }
+
+    // Write lane status
+    void writeLaneStatus(char laneId, int laneNumber, int vehicleCount, bool isPriority) {
+        std::string statusPath = dataPath + "/lane_status.txt";
+
+        std::ofstream file(statusPath, std::ios::app);
+        if (file.is_open()) {
+            file << laneId << laneNumber << ": " << vehicleCount << " vehicles"
+                 << (isPriority ? " (PRIORITY)" : "") << std::endl;
+            file.close();
+        }
+    }
+};
+
+// Simplified TrafficManager class
+class TrafficManager {
+public:
+    std::vector<Lane*> lanes;
+    TrafficLight* trafficLight;
+    FileHandler* fileHandler;
+    uint32_t lastCheckTime;
+    bool running;
+
+    TrafficManager()
+        : trafficLight(nullptr),
+          fileHandler(nullptr),
+          lastCheckTime(0),
+          running(false) {}
+
+    ~TrafficManager() {
+        // Clean up resources
+        for (auto* lane : lanes) {
+            delete lane;
+        }
+        lanes.clear();
+
+        if (trafficLight) {
+            delete trafficLight;
+            trafficLight = nullptr;
+        }
+
+        if (fileHandler) {
+            delete fileHandler;
+            fileHandler = nullptr;
+        }
+    }
+
+    // Initialize the manager
+    bool initialize() {
+        // Create file handler
+        fileHandler = new FileHandler(DATA_DIR);
+        if (!fileHandler->initializeFiles()) {
+            log_message("Failed to initialize lane files");
+            return false;
+        }
+
+        // Create lanes for each road and lane number
+        for (char road : {'A', 'B', 'C', 'D'}) {
+            for (int laneNum = 1; laneNum <= 3; laneNum++) {
+                lanes.push_back(new Lane(road, laneNum));
+            }
+        }
+
+        // Create traffic light
+        trafficLight = new TrafficLight();
+
+        log_message("TrafficManager initialized with 12 lanes");
+        return true;
+    }
+
+    // Start the manager
+    void start() {
+        running = true;
+        log_message("TrafficManager started");
+    }
+
+    // Stop the manager
+    void stop() {
+        running = false;
+        log_message("TrafficManager stopped");
+    }
+
+    // Update the traffic state
+    void update(uint32_t delta) {
+        if (!running) return;
+
+        uint32_t currentTime = SDL_GetTicks();
+
+        // Check for new vehicles periodically
+        if (currentTime - lastCheckTime >= 1000) { // Every second
+            if (fileHandler) {
+                // Read new vehicles
+                std::vector<Vehicle*> newVehicles = fileHandler->readVehiclesFromFiles();
+
+                // Add to appropriate lanes
+                for (auto* vehicle : newVehicles) {
+                    Lane* targetLane = findLane(vehicle->getLane(), vehicle->getLaneNumber());
+                    if (targetLane) {
+                        targetLane->enqueue(vehicle);
+                    } else {
+                        delete vehicle; // Clean up if lane not found
+                    }
+                }
+            }
+
+            // Update priorities
+            for (auto* lane : lanes) {
+                lane->updatePriority();
+            }
+
+            lastCheckTime = currentTime;
+        }
+
+        // Update traffic light
+        if (trafficLight) {
+            trafficLight->update(lanes);
+        }
+
+        // Update vehicles in each lane
+        for (auto* lane : lanes) {
+            bool isGreenLight = trafficLight ? trafficLight->isGreen(lane->getLaneId()) : false;
+
+            auto& vehicles = lane->vehicles;
+            for (auto* vehicle : vehicles) {
+                // Green light for this lane or it's a free lane (lane 3)
+                bool canMove = isGreenLight || lane->getLaneNumber() == 3;
+                vehicle->update(delta, canMove, 0.0f);
+            }
+
+            // Remove vehicles that are off-screen
+            vehicles.erase(
+                std::remove_if(vehicles.begin(), vehicles.end(),
+                    [](Vehicle* v) {
+                        if (v->isOffScreen()) {
+                            log_message("Vehicle " + v->getId() + " left the simulation");
+                            delete v;
+                            return true;
+                        }
+                        return false;
+                    }),
+                vehicles.end()
+            );
+        }
+    }
+
+    // Find a lane by ID and number
+    Lane* findLane(char laneId, int laneNumber) const {
+        for (auto* lane : lanes) {
+            if (lane->getLaneId() == laneId && lane->getLaneNumber() == laneNumber) {
+                return lane;
+            }
+        }
+        return nullptr;
+    }
+
+    // Get statistics for display
+    std::string getStatistics() const {
+        std::string stats = "Lane Statistics:\n";
+        int totalVehicles = 0;
+
+        for (auto* lane : lanes) {
+            int count = lane->getVehicleCount();
+            totalVehicles += count;
+
+            stats += lane->getName() + ": " + std::to_string(count) + " vehicles";
+            if (lane->isPriorityLane() && lane->getPriority() > 0) {
+                stats += " (PRIORITY)";
+            }
+            stats += "\n";
+        }
+
+        stats += "Total Vehicles: " + std::to_string(totalVehicles) + "\n";
+
+        return stats;
+    }
+
+    // Methods to match the architecture
+    const std::vector<Lane*>& getLanes() const { return lanes; }
+    TrafficLight* getTrafficLight() const { return trafficLight; }
+    bool isLanePrioritized(char laneId, int laneNumber) const {
+        if (laneId == 'A' && laneNumber == 2) {
+            Lane* lane = findLane('A', 2);
+            return lane && lane->getPriority() > 0;
+        }
+        return false;
+    }
+    Lane* getPriorityLane() const { return findLane('A', 2); }
+};
+
+// Simplified Renderer class
+class Renderer {
+public:
+    SDL_Window* window;
+    SDL_Renderer* renderer;
+    int windowWidth;
+    int windowHeight;
+    bool active;
+    bool showDebug;
+    TrafficManager* trafficManager;
+
+    Renderer()
+        : window(nullptr),
+          renderer(nullptr),
+          windowWidth(800),
+          windowHeight(800),
+          active(false),
+          showDebug(true),
+          trafficManager(nullptr) {}
+
+    ~Renderer() {
+        cleanup();
+    }
+
+    // Initialize renderer
+    bool initialize(int width, int height, const std::string& title) {
+        windowWidth = width;
+        windowHeight = height;
+
+        // Create window
+        window = SDL_CreateWindow(title.c_str(), width, height, SDL_WINDOW_OPENGL);
+        if (!window) {
+            log_message("Failed to create window: " + std::string(SDL_GetError()));
+            return false;
+        }
+
+        // Create renderer
+        renderer = SDL_CreateRenderer(window, NULL);
+        if (!renderer) {
+            log_message("Failed to create renderer: " + std::string(SDL_GetError()));
+            return false;
+        }
+
+        active = true;
+        log_message("Renderer initialized successfully");
+        return true;
+    }
+
+    // Set traffic manager
+    void setTrafficManager(TrafficManager* manager) {
+        trafficManager = manager;
+    }
+
+    // Draw a realistic road layout
+    void drawRoadLayout() {
+        const int ROAD_WIDTH = 150;
+        const int LANE_WIDTH = 50;
+        const int SIDEWALK_WIDTH = 20;
+
+        // Draw grass background
+        SDL_SetRenderDrawColor(renderer, GRASS_COLOR.r, GRASS_COLOR.g, GRASS_COLOR.b, GRASS_COLOR.a);
+        SDL_RenderClear(renderer);
+
+        // Draw sidewalks
+        SDL_SetRenderDrawColor(renderer, SIDEWALK_COLOR.r, SIDEWALK_COLOR.g, SIDEWALK_COLOR.b, SIDEWALK_COLOR.a);
+
+        // Horizontal sidewalks
+        SDL_FRect hSidewalk1 = {0, (float)(windowHeight/2 - ROAD_WIDTH/2 - SIDEWALK_WIDTH),
+                               (float)windowWidth, (float)SIDEWALK_WIDTH};
+        SDL_FRect hSidewalk2 = {0, (float)(windowHeight/2 + ROAD_WIDTH/2),
+                               (float)windowWidth, (float)SIDEWALK_WIDTH};
+        SDL_RenderFillRect(renderer, &hSidewalk1);
+        SDL_RenderFillRect(renderer, &hSidewalk2);
+
+        // Vertical sidewalks
+        SDL_FRect vSidewalk1 = {(float)(windowWidth/2 - ROAD_WIDTH/2 - SIDEWALK_WIDTH), 0,
+                               (float)SIDEWALK_WIDTH, (float)windowHeight};
+        SDL_FRect vSidewalk2 = {(float)(windowWidth/2 + ROAD_WIDTH/2), 0,
+                               (float)SIDEWALK_WIDTH, (float)windowHeight};
+        SDL_RenderFillRect(renderer, &vSidewalk1);
+        SDL_RenderFillRect(renderer, &vSidewalk2);
+
+        // Draw main roads (dark gray)
+        SDL_SetRenderDrawColor(renderer, ROAD_COLOR.r, ROAD_COLOR.g, ROAD_COLOR.b, ROAD_COLOR.a);
+
+        // Horizontal road
+        SDL_FRect hRoad = {0, (float)(windowHeight/2 - ROAD_WIDTH/2),
+                          (float)windowWidth, (float)ROAD_WIDTH};
+        SDL_RenderFillRect(renderer, &hRoad);
+
+        // Vertical road
+        SDL_FRect vRoad = {(float)(windowWidth/2 - ROAD_WIDTH/2), 0,
+                          (float)ROAD_WIDTH, (float)windowHeight};
+        SDL_RenderFillRect(renderer, &vRoad);
+
+        // Draw intersection (slightly darker)
+        SDL_SetRenderDrawColor(renderer, INTERSECTION_COLOR.r, INTERSECTION_COLOR.g, INTERSECTION_COLOR.b, INTERSECTION_COLOR.a);
+        SDL_FRect intersection = {(float)(windowWidth/2 - ROAD_WIDTH/2), (float)(windowHeight/2 - ROAD_WIDTH/2),
+                                 (float)ROAD_WIDTH, (float)ROAD_WIDTH};
+        SDL_RenderFillRect(renderer, &intersection);
+
+        // Draw lane dividers
+        // Horizontal lane dividers
+        for (int i = 1; i < 3; i++) {
+            int y = windowHeight/2 - ROAD_WIDTH/2 + i * LANE_WIDTH;
+
+            if (i == 1) {
+                // Center line (yellow)
+                SDL_SetRenderDrawColor(renderer, YELLOW_MARKER_COLOR.r, YELLOW_MARKER_COLOR.g,
+                                     YELLOW_MARKER_COLOR.b, YELLOW_MARKER_COLOR.a);
+            } else {
+                // Other lane dividers (white)
+                SDL_SetRenderDrawColor(renderer, LANE_MARKER_COLOR.r, LANE_MARKER_COLOR.g,
+                                     LANE_MARKER_COLOR.b, LANE_MARKER_COLOR.a);
+            }
+
+            // Draw dashed lines outside intersection
+            for (int x = 0; x < windowWidth; x += 30) {
+                if (x < windowWidth/2 - ROAD_WIDTH/2 || x > windowWidth/2 + ROAD_WIDTH/2) {
+                    SDL_FRect line = {(float)x, (float)y - 2, 15, 4};
+                    SDL_RenderFillRect(renderer, &line);
+                }
+            }
+        }
+
+        // Vertical lane dividers
+        for (int i = 1; i < 3; i++) {
+            int x = windowWidth/2 - ROAD_WIDTH/2 + i * LANE_WIDTH;
+
+            if (i == 1) {
+                // Center line (yellow)
+                SDL_SetRenderDrawColor(renderer, YELLOW_MARKER_COLOR.r, YELLOW_MARKER_COLOR.g,
+                                     YELLOW_MARKER_COLOR.b, YELLOW_MARKER_COLOR.a);
+            } else {
+                // Other lane dividers (white)
+                SDL_SetRenderDrawColor(renderer, LANE_MARKER_COLOR.r, LANE_MARKER_COLOR.g,
+                                     LANE_MARKER_COLOR.b, LANE_MARKER_COLOR.a);
+            }
+
+            // Draw dashed lines outside intersection
+            for (int y = 0; y < windowHeight; y += 30) {
+                if (y < windowHeight/2 - ROAD_WIDTH/2 || y > windowHeight/2 + ROAD_WIDTH/2) {
+                    SDL_FRect line = {(float)x - 2, (float)y, 4, 15};
+                    SDL_RenderFillRect(renderer, &line);
+                }
+            }
+        }
+
+        // Draw crosswalks
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+        // North crosswalk
+        for (int i = 0; i < 10; i++) {
+            SDL_FRect stripe = {(float)(windowWidth/2 - ROAD_WIDTH/2 + 15*i),
+                               (float)(windowHeight/2 - ROAD_WIDTH/2 - 15), 10, 15};
+            SDL_RenderFillRect(renderer, &stripe);
+        }
+
+        // South crosswalk
+        for (int i = 0; i < 10; i++) {
+            SDL_FRect stripe = {(float)(windowWidth/2 - ROAD_WIDTH/2 + 15*i),
+                               (float)(windowHeight/2 + ROAD_WIDTH/2), 10, 15};
+            SDL_RenderFillRect(renderer, &stripe);
+        }
+
+        // East crosswalk
+        for (int i = 0; i < 10; i++) {
+            SDL_FRect stripe = {(float)(windowWidth/2 + ROAD_WIDTH/2),
+                               (float)(windowHeight/2 - ROAD_WIDTH/2 + 15*i), 15, 10};
+            SDL_RenderFillRect(renderer, &stripe);
+        }
+
+        // West crosswalk
+        for (int i = 0; i < 10; i++) {
+            SDL_FRect stripe = {(float)(windowWidth/2 - ROAD_WIDTH/2 - 15),
+                               (float)(windowHeight/2 - ROAD_WIDTH/2 + 15*i), 15, 10};
+            SDL_RenderFillRect(renderer, &stripe);
+        }
+    }
+
+    // Render a frame
+    void renderFrame() {
+        if (!active || !renderer || !trafficManager) {
+            return;
+        }
+
+        // Draw realistic road layout
+        drawRoadLayout();
+
+        // Draw traffic lights
+        if (trafficManager->trafficLight) {
+            trafficManager->trafficLight->render(renderer);
+        }
+
+        // Draw vehicles
+        for (auto* lane : trafficManager->getLanes()) {
+            for (auto* vehicle : lane->getVehicles()) {
+                vehicle->render(renderer);
+            }
+        }
+
+        // Draw debug overlay
+        if (showDebug) {
+            drawDebugOverlay();
+        }
+
+        // Present render
+        SDL_RenderPresent(renderer);
+    }
+
+    // Start render loop
+    void startRenderLoop() {
+        if (!active) {
+            return;
+        }
+
+        log_message("Starting render loop");
+
+        bool running = true;
+        uint32_t lastUpdateTime = SDL_GetTicks();
+
+        while (running) {
+            // Process events
+            SDL_Event event;
+            while (SDL_PollEvent(&event)) {
+                if (event.type == SDL_EVENT_QUIT) {
+                    running = false;
+                } else if (event.type == SDL_EVENT_KEY_DOWN) {
+                    // Fixed SDL3 key handling
+                    int key = event.key.which;
+
+                    if (key == SDL_SCANCODE_D) {
+                        showDebug = !showDebug;
+                        log_message("Debug overlay " + std::string(showDebug ? "enabled" : "disabled"));
+                    } else if (key == SDL_SCANCODE_ESCAPE) {
+                        running = false;
+                    }
+                }
+            }
+
+            // Calculate delta time
+            uint32_t currentTime = SDL_GetTicks();
+            uint32_t deltaTime = currentTime - lastUpdateTime;
+
+            // Update traffic manager
+            if (trafficManager) {
+                trafficManager->update(deltaTime);
+            }
+
+            // Render frame
+            renderFrame();
+
+            // Limit frame rate
+            SDL_Delay(16); // ~60 FPS
+
+            lastUpdateTime = currentTime;
+        }
+    }
+
+    // Draw debug overlay
+    void drawDebugOverlay() {
+        if (!trafficManager) return;
+
+        // Draw semi-transparent background
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_FRect overlayRect = {10, 10, 280, 300};
+        SDL_RenderFillRect(renderer, &overlayRect);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+
+        // Draw border
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_RenderRect(renderer, &overlayRect);
+
+        // Function to draw text (simplified with rectangles)
+        auto drawText = [this](const std::string& text, float x, float y, SDL_Color color) {
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+            SDL_FRect rect = {x, y, text.length() * 7.0f, 16.0f};
+            SDL_RenderFillRect(renderer, &rect);
+
+            // Black border
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderRect(renderer, &rect);
+        };
+
+        // Title
+        drawText("Traffic Junction Simulator", 20, 20, {255, 255, 255, 255});
+
+        // Traffic light state
+        std::string stateStr = "Traffic Light: ";
+        SDL_Color stateColor = {255, 255, 255, 255};
+
+        switch (trafficManager->trafficLight->getCurrentState()) {
+            case TrafficLightState::ALL_RED:
+                stateStr += "All Red";
+                stateColor = {255, 100, 100, 255};
+                break;
+            case TrafficLightState::A_GREEN:
+                stateStr += "A Green";
+                stateColor = {100, 255, 100, 255};
+                break;
+            case TrafficLightState::B_GREEN:
+                stateStr += "B Green";
+                stateColor = {100, 255, 100, 255};
+                break;
+            case TrafficLightState::C_GREEN:
+                stateStr += "C Green";
+                stateColor = {100, 255, 100, 255};
+                break;
+            case TrafficLightState::D_GREEN:
+                stateStr += "D Green";
+                stateColor = {100, 255, 100, 255};
+                break;
+        }
+
+        if (trafficManager->trafficLight->isPriorityMode) {
+            stateStr += " (PRIORITY MODE)";
+            stateColor = {255, 165, 0, 255};
+        }
+
+        drawText(stateStr, 20, 45, stateColor);
+
+        // Lane statistics header
+        drawText("Lane Statistics:", 20, 70, {255, 255, 255, 255});
+
+        // Group lanes by road
+        int y = 95;
+
+        for (char road : {'A', 'B', 'C', 'D'}) {
+            drawText("Road " + std::string(1, road) + ":", 30, y, {200, 200, 255, 255});
+            y += 20;
+
+            // Find lanes for this road
+            for (int laneNum = 1; laneNum <= 3; laneNum++) {
+                Lane* lane = trafficManager->findLane(road, laneNum);
+                if (lane) {
+                    std::string laneInfo = "Lane " + lane->getName() + ": " +
+                                         std::to_string(lane->getVehicleCount()) + " vehicles";
+
+                    SDL_Color color = {255, 255, 255, 255};
+
+                    // Highlight priority lane
+                    if (lane->isPriorityLane() && lane->getPriority() > 0) {
+                        laneInfo += " (PRIORITY)";
+                        color = {255, 165, 0, 255};
+                    }
+                    // Highlight free lane
+                    else if (laneNum == 3) {
+                        laneInfo += " (FREE)";
+                        color = {100, 255, 100, 255};
+                    }
+
+                    drawText(laneInfo, 40, y, color);
+                    y += 18;
+                }
+            }
+
+            y += 5; // Add space between roads
+        }
+
+        // Controls info
+        drawText("Press D to toggle debug overlay", 20, 275, {200, 200, 200, 255});
+        drawText("Press ESC to exit", 20, 295, {200, 200, 200, 255});
+    }
+
+    // Clean up resources
+    void cleanup() {
+        if (renderer) {
+            SDL_DestroyRenderer(renderer);
+            renderer = nullptr;
+        }
+
+        if (window) {
+            SDL_DestroyWindow(window);
+            window = nullptr;
+        }
+
+        active = false;
+    }
+};
+
+// Main function
+int main(int argc, char* argv[]) {
+    try {
+        // Initialize debug logger
+        DebugLogger::initialize();
+        log_message("Starting Traffic Junction Simulator");
+
+        // Initialize SDL
+        if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+            log_message("SDL initialization failed: " + std::string(SDL_GetError()));
+            return 1;
+        }
+
+        // Create traffic manager
+        TrafficManager trafficManager;
+        if (!trafficManager.initialize()) {
+            log_message("Failed to initialize traffic manager");
+            SDL_Quit();
+            return 1;
+        }
+
+        // Create renderer
+        Renderer renderer;
+        if (!renderer.initialize(WINDOW_WIDTH, WINDOW_HEIGHT, "Traffic Junction Simulator")) {
+            log_message("Failed to initialize renderer");
+            SDL_Quit();
+            return 1;
+        }
+
+        // Connect traffic manager to renderer
+        renderer.setTrafficManager(&trafficManager);
+
+        // Start traffic manager
+        trafficManager.start();
+
+        // Start render loop
+        renderer.startRenderLoop();
+
+        // Cleanup
+        trafficManager.stop();
+        renderer.cleanup();
+        SDL_Quit();
+
+        log_message("Simulator shutdown complete");
+        return 0;
+    }
+    catch (const std::exception& e) {
+        log_message("Unhandled exception: " + std::string(e.what()));
+        SDL_Quit();
+        return 1;
+    }
+}
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: src/traffic_generator.cpp =====//
+
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <random>
+#include <chrono>
+#include <thread>
+#include <filesystem>
+#include <ctime>
+
+// Namespaces
+namespace fs = std::filesystem;
+
+// Constants
+const std::string DATA_DIR = "data/lanes";
+const int GENERATION_INTERVAL_MS = 1000;
+const int MAX_VEHICLES = 30;
+
+// Simple console log without mutex
+void console_log(const std::string& message) {
+    time_t now = std::time(nullptr);
+    tm timeinfo;
+
+#ifdef _WIN32
+    localtime_s(&timeinfo, &now);
+#else
+    localtime_r(&now, &timeinfo);
+#endif
+
+    char timestamp[64];
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &timeinfo);
+
+    std::cout << "[" << timestamp << "] " << message << std::endl;
+}
+
+// Function to ensure the data directory exists
+void ensure_directories() {
+    if (!fs::exists(DATA_DIR)) {
+        fs::create_directories(DATA_DIR);
+        console_log("Created directory: " + DATA_DIR);
+    }
+}
+
+// Write a vehicle to lane file without mutex
+void write_vehicle(const std::string& id, char lane) {
+    std::string filepath = DATA_DIR + "/lane" + lane + ".txt";
+    std::ofstream file(filepath, std::ios::app);
+    if (file.is_open()) {
+        file << id << ":" << lane << std::endl;
+        file.close();
+        console_log("Added " + id + " to lane " + lane);
+    }
+}
+
+// Generate a random lane (A, B, C, D)
+char random_lane() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> dist(0, 3);
+    return 'A' + dist(gen);
+}
+
+// Generate a random lane number (1, 2, 3)
+int random_lane_number() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> dist(1, 3);
+    return dist(gen);
+}
+
+// Clear existing files
+void clear_files() {
+    for (char lane = 'A'; lane <= 'D'; lane++) {
+        std::string filepath = DATA_DIR + "/lane" + lane + ".txt";
+        std::ofstream file(filepath, std::ios::trunc);
+        file.close();
+        console_log("Cleared file: " + filepath);
+    }
+}
+
+// Main function
+int main() {
+    try {
+        console_log("Traffic generator starting");
+
+        // Create directories and clear files
+        ensure_directories();
+        clear_files();
+
+        // Counter for generated vehicles
+        int vehicle_count = 0;
+
+        // First generate 10 vehicles for lane A2 (priority testing)
+        console_log("Generating vehicles for lane A2 (priority lane)");
+        for (int i = 0; i < 10 && vehicle_count < MAX_VEHICLES; i++) {
+            std::string id = "V" + std::to_string(vehicle_count + 1) + "_L2";
+            write_vehicle(id, 'A');
+            vehicle_count++;
+
+            // Wait between vehicles
+            std::this_thread::sleep_for(std::chrono::milliseconds(GENERATION_INTERVAL_MS));
+        }
+
+        // Generate remaining vehicles randomly
+        console_log("Generating random vehicles");
+        while (vehicle_count < MAX_VEHICLES) {
+            char lane = random_lane();
+            int lane_num = random_lane_number();
+            std::string id = "V" + std::to_string(vehicle_count + 1) + "_L" + std::to_string(lane_num);
+
+            write_vehicle(id, lane);
+            vehicle_count++;
+
+            // Wait between vehicles
+            std::this_thread::sleep_for(std::chrono::milliseconds(GENERATION_INTERVAL_MS));
+        }
+
+        console_log("Generated " + std::to_string(vehicle_count) + " vehicles");
+        console_log("Traffic generator completed");
+
+        return 0;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\traffic_generator.h =====//
+
+// include/traffic_generator.h
+#pragma once
+#include <string>
+#include <random>
+#include <map>
+#include <filesystem>
+#include <fstream>
+#include <thread>
+#include <chrono>
+#include <iostream>
+#include <iomanip>
+#include <mutex>
+
+// Define constants similar to those in the main project
+namespace Constants {
+    static constexpr int MAX_QUEUE_SIZE = 100;
+    static constexpr int PRIORITY_THRESHOLD = 10;
+    static constexpr int NORMAL_THRESHOLD = 5;
+
+    // Lane IDs (matching the main project)
+    enum class LaneId {
+        AL1_INCOMING = 0,
+        AL2_PRIORITY = 1,
+        AL3_FREELANE = 2,
+        BL1_INCOMING = 3,
+        BL2_NORMAL = 4,
+        BL3_FREELANE = 5,
+        CL1_INCOMING = 6,
+        CL2_NORMAL = 7,
+        CL3_FREELANE = 8,
+        DL1_INCOMING = 9,
+        DL2_NORMAL = 10,
+        DL3_FREELANE = 11
+    };
+
+    // Direction values
+    enum class Direction {
+        STRAIGHT = 0,
+        LEFT = 1,
+        RIGHT = 2
+    };
+}
+
+// Generator class to create vehicle data
+class Generator {
+private:
+    std::mt19937 rng;  // Random number generator
+    std::map<Constants::LaneId, std::filesystem::path> laneFiles;  // Lane file paths
+    uint32_t nextVehicleId;  // ID counter for vehicles
+    std::filesystem::path dataDir;  // Directory for data files
+    std::mutex fileMutex;  // Thread safety for file operations
+
+    // Settings for each lane
+    struct LaneConfig {
+        double spawnRate;
+        int maxVehicles;
+        bool canGoStraight;
+        bool canGoLeft;
+        bool canGoRight;
+    };
+    std::map<Constants::LaneId, LaneConfig> laneConfigs;
+
+    // Private helper methods
+    void initializeLaneFiles();
+    void setupLaneConfigs();
+    Constants::Direction getRandomDirection(const LaneConfig& config);
+    size_t countVehiclesInFile(const std::filesystem::path& filepath) const;
+    void writeVehicleToFile(const std::filesystem::path& filepath, uint32_t id,
+                          Constants::Direction dir);
+    void writeVehicleToCombinedFile(Constants::LaneId lane, uint32_t id);
+    bool shouldGenerateVehicle(const LaneConfig& config, size_t currentCount);
+    void clearAllFiles();
+    void logGeneration(Constants::LaneId lane, uint32_t vehicleId, Constants::Direction dir,
+                     size_t currentCount, int maxCount);
+
+public:
+    Generator();
+
+    // Generate traffic for all lanes
+    void generateTraffic();
+
+    // Display generator status
+    void displayStatus() const;
+};
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\core\Constants.h =====//
+
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
+
+#include <string>
+#include <SDL3/SDL.h>
+
+namespace Constants {
+    // Window settings
+    constexpr int WINDOW_WIDTH = 800;
+    constexpr int WINDOW_HEIGHT = 800;
+    const std::string WINDOW_TITLE = "Traffic Junction Simulator";
+    constexpr float SCALE = 1.1f;
+
+    // Road settings
+    constexpr int ROAD_WIDTH = 150;
+    constexpr int LANE_WIDTH = 50;
+    constexpr int ARROW_SIZE = 15;
+
+    // Vehicle settings
+    constexpr int MAX_VEHICLE_ID = 20;
+    constexpr float VEHICLE_LENGTH = 20.0f;
+    constexpr float VEHICLE_WIDTH = 10.0f;
+    constexpr float VEHICLE_GAP = 15.0f;
+    constexpr float TURN_DURATION = 1500.0f;
+    constexpr float BEZIER_CONTROL_OFFSET = 80.0f;
+    constexpr float TURN_SPEED = 0.0008f;
+    constexpr float MOVE_SPEED = 0.2f;
+
+    // Traffic light settings
+    constexpr int ALL_RED_DURATION = 2000; // 2 seconds
+    constexpr int GREEN_DURATION = 3000;   // 3 seconds
+
+    // Queue settings
+    constexpr int MAX_QUEUE_SIZE = 100;
+
+    // Priority settings
+    constexpr int PRIORITY_THRESHOLD_HIGH = 10; // Enter priority mode when > 10 vehicles
+    constexpr int PRIORITY_THRESHOLD_LOW = 5;   // Exit priority mode when < 5 vehicles
+
+    // File paths
+    const std::string DATA_PATH = "data/lanes";
+    const std::string LOG_FILE = "traffic_simulator.log";
+    const std::string VEHICLE_FILE = "vehicles.data";
+    const std::string FONT_PATH = "/usr/share/fonts/TTF/DejaVuSans.ttf";
+    const std::string CAR_TEXTURE_PATH = "assets/car.jpg";
+
+    // Colors
+    constexpr SDL_Color ROAD_COLOR = {50, 50, 50, 255};
+    constexpr SDL_Color LANE_MARKER_COLOR = {255, 255, 255, 255};
+    constexpr SDL_Color RED_LIGHT_COLOR = {255, 0, 0, 255};
+    constexpr SDL_Color GREEN_LIGHT_COLOR = {11, 156, 50, 255};
+    constexpr SDL_Color NORMAL_VEHICLE_COLOR = {0, 0, 255, 255};
+    constexpr SDL_Color EMERGENCY_VEHICLE_COLOR = {255, 0, 0, 255};
+    constexpr SDL_Color PRIORITY_INDICATOR_COLOR = {255, 165, 0, 255};
+    constexpr SDL_Color TEXT_COLOR = {0, 0, 0, 255};
+    constexpr SDL_Color DEBUG_TEXT_COLOR = {255, 255, 255, 255};
+    constexpr SDL_Color DEBUG_BACKGROUND_COLOR = {0, 0, 0, 128};
+}
+
+#endif // CONSTANTS_H
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\core\Lane.h =====//
+
+#ifndef LANE_H
+#define LANE_H
+
+#include <queue>
+#include <mutex>
+#include <string>
+#include "core/Vehicle.h"
+
+class Lane {
+public:
+    Lane(char laneId, int laneNumber);
+    ~Lane();
+
+    // Queue operations
+    void enqueue(Vehicle* vehicle);
+    Vehicle* dequeue();
+    Vehicle* peek() const;
+    bool isEmpty() const;
+    int getVehicleCount() const;
+
+    // Priority related operations
+    int getPriority() const;
+    void updatePriority();
+    bool isPriorityLane() const;
+
+    // Lane identification
+    char getLaneId() const;
+    int getLaneNumber() const;
+    std::string getName() const;
+
+    // Iterate through vehicles for rendering
+    const std::vector<Vehicle*>& getVehicles() const;
+
+private:
+    char laneId;               // A, B, C, or D
+    int laneNumber;            // 1, 2, or 3
+    bool isPriority;           // Is this a priority lane (AL2)
+    int priority;              // Current priority (higher means served first)
+    std::vector<Vehicle*> vehicles; // Storage for vehicles in the lane
+    mutable std::mutex mutex;  // For thread safety
+
+    // Update vehicle positions based on traffic light state
+    void updateVehiclePositions();
+};
+
+#endif // LANE_H
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\core\TrafficLight.h =====//
+
+#ifndef TRAFFIC_LIGHT_H
+#define TRAFFIC_LIGHT_H
+
+#include <cstdint>
+#include <vector>
+#include <string>
+#include <SDL3/SDL.h>
+#include "core/Lane.h"
+
+class TrafficLight {
+public:
+    enum class State {
+        ALL_RED = 0,
+        A_GREEN = 1,
+        B_GREEN = 2,
+        C_GREEN = 3,
+        D_GREEN = 4
+    };
+
+    TrafficLight();
+    ~TrafficLight();
+
+    // Updates the traffic light state based on lane priorities
+    void update(const std::vector<Lane*>& lanes);
+
+    // Renders the traffic lights
+    void render(SDL_Renderer* renderer);
+
+    // Returns the current traffic light state
+    State getCurrentState() const { return currentState; }
+
+    // Returns the next traffic light state
+    State getNextState() const { return nextState; }
+
+    // Sets the next traffic light state
+    void setNextState(State state);
+
+    // Checks if the specific lane gets green light
+    bool isGreen(char lane) const;
+
+private:
+    State currentState;
+    State nextState;
+
+    // Timing for the green and red states
+    const int allRedDuration = 2000; // 2 seconds for all red
+    const int greenDuration = 3000;  // 3 seconds for green
+
+    // Last state change time in milliseconds
+    uint32_t lastStateChangeTime;
+
+    // Priority mode flag
+    bool isPriorityMode;
+
+    // Track when normal mode should resume (after priority mode drops to 5 vehicles)
+    bool shouldResumeNormalMode;
+
+    // Calculate the appropriate next state considering priorities
+    State calculateNextState(const std::vector<Lane*>& lanes);
+
+    // Calculate duration based on vehicle count (|V| * t)
+    int calculateGreenDuration(int vehicleCount);
+
+    // Helper drawing functions
+    void drawLightForA(SDL_Renderer* renderer, bool isRed);
+    void drawLightForB(SDL_Renderer* renderer, bool isRed);
+    void drawLightForC(SDL_Renderer* renderer, bool isRed);
+    void drawLightForD(SDL_Renderer* renderer, bool isRed);
+};
+
+#endif // TRAFFIC_LIGHT_H;
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\core\Vehicle.h =====//
+
+#ifndef VEHICLE_H
+#define VEHICLE_H
+
+#include <string>
+#include <SDL3/SDL.h>
+#include <ctime>
+
+class Vehicle {
+public:
+    Vehicle(const std::string& id, char lane, int laneNumber, bool isEmergency = false);
+    ~Vehicle();
+
+    // Getters and setters
+    std::string getId() const;
+    char getLane() const;
+    void setLane(char lane);
+    int getLaneNumber() const;
+    void setLaneNumber(int number);
+    bool isEmergencyVehicle() const;
+    time_t getArrivalTime() const;
+
+    // Animation related
+    float getAnimationPos() const;
+    void setAnimationPos(float pos);
+    bool isTurning() const;
+    void setTurning(bool turning);
+    float getTurnProgress() const;
+    void setTurnProgress(float progress);
+    float getTurnPosX() const;
+    void setTurnPosX(float x);
+    float getTurnPosY() const;
+    void setTurnPosY(float y);
+
+    // Update vehicle position
+    void update(uint32_t delta, bool isGreenLight, float targetPos);
+
+    // Render vehicle
+    void render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int queuePos);
+
+    // Calculate turn path
+    void calculateTurnPath(float startX, float startY, float controlX, float controlY,
+                          float endX, float endY, float progress);
+
+private:
+    std::string id;
+    char lane;
+    int laneNumber;
+    bool isEmergency;
+    time_t arrivalTime;
+
+    // Animation properties
+    float animPos;
+    bool turning;
+    float turnProgress;
+    float turnPosX;
+    float turnPosY;
+
+    // Constants
+    static constexpr float VEHICLE_LENGTH = 20.0f;
+    static constexpr float VEHICLE_WIDTH = 10.0f;
+    static constexpr float VEHICLE_GAP = 15.0f;
+    static constexpr float TURN_SPEED = 0.0008f;
+    static constexpr float MOVE_SPEED = 0.2f;
+
+    // Helper methods
+    float easeInOutQuad(float t) const;
+};
+
+#endif // VEHICLE_H
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\managers\FileHandler.h =====//
+
+#ifndef FILE_HANDLER_H
+#define FILE_HANDLER_H
+
+#include <string>
+#include <vector>
+#include <mutex>
+#include "core/Vehicle.h"
+
+class FileHandler {
+public:
+    FileHandler(const std::string& dataPath = "data/lanes");
+    ~FileHandler();
+
+    // Read vehicles from lane files
+    std::vector<Vehicle*> readVehiclesFromFiles();
+
+    // Write lane status to file (for debugging/monitoring)
+    void writeLaneStatus(char laneId, int laneNumber, int vehicleCount, bool isPriority);
+
+    // Check if files exist/are readable
+    bool checkFilesExist();
+
+    // Create directories and empty files if they don't exist
+    bool initializeFiles();
+
+private:
+    std::string dataPath;
+    std::mutex mutex;
+
+    // Lane file paths
+    std::string getLaneFilePath(char laneId) const;
+
+    // Read vehicles from a specific lane file
+    std::vector<Vehicle*> readVehiclesFromFile(char laneId);
+
+    // Parse a vehicle line from the file
+    Vehicle* parseVehicleLine(const std::string& line);
+
+    // Get the lane status file path
+    std::string getLaneStatusFilePath() const;
+};
+
+#endif // FILE_HANDLER_H
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\managers\IntersectionController.h =====//
+
+// IntersectionController.h
+#pragma once
+
+#include "core/Lane.h"
+#include "core/Vehicle.h"
+#include "utils/PriorityQueue.h"
+#include <vector>
+#include <memory>
+#include <cmath>
+
+class IntersectionController {
+public:
+    // Public types for status reporting
+    struct LaneStatus {
+        LaneId id;
+        size_t queueSize;
+        int priority;
+        bool isActive;
+        float waitTime;
+    };
+
+    struct ProcessingStats {
+        float avgWaitTime;
+        size_t totalVehiclesProcessed;
+        size_t currentQueueSizes[12]; // One for each lane
+        bool isPriorityMode;
+    };
+
+    // Constructor
+    explicit IntersectionController(std::vector<std::unique_ptr<Lane>>& lanes);
+
+    // Core update method
+    void update(float deltaTime);
+
+    // State query methods
+    bool isInPriorityMode() const { return isPriorityMode; }
+    std::vector<LaneStatus> getLaneStatuses() const;
+    ProcessingStats getStats() const;
+
+private:
+    // Core components
+    std::vector<std::unique_ptr<Lane>>& lanes;
+    PriorityQueue<LaneId> laneQueue;
+
+    // State tracking
+    bool isPriorityMode;
+    float stateTimer;
+    float elapsedTime;
+    float processingTimer;
+    size_t vehiclesProcessedInState;
+    size_t totalVehiclesProcessed;
+
+    // Configuration constants
+    static constexpr size_t PRIORITY_THRESHOLD = 10;     // Switch to priority mode at 10 vehicles
+    static constexpr size_t PRIORITY_RELEASE_THRESHOLD = 5; // Return to normal mode at 5 vehicles
+    static constexpr float MIN_STATE_TIME = 5.0f;        // Minimum time in any state
+    static constexpr float MAX_STATE_TIME = 30.0f;       // Maximum time in any state
+    static constexpr float MAX_WAIT_TIME = 45.0f;        // Maximum vehicle wait time
+    static constexpr float BASE_VEHICLE_PROCESS_TIME = 2.0f; // Base time to process one vehicle
+
+    // Queue management methods
+    void updateLaneQueue();
+    void processPriorityLane();
+    void processNormalLanes();
+    void processFreeLanes();
+    size_t calculateVehiclesToProcess() const;
+
+    // State management methods
+    void handleStateTransition();
+    void checkWaitTimes();
+    void updateTimers(float deltaTime);
+    void resetStateTimers();
+
+    // Utility methods
+    float calculateAverageWaitingVehicles() const;
+    float calculateProcessingTime() const;
+    bool shouldSwitchToNormalMode() const;
+    bool shouldSwitchToPriorityMode() const;
+    Lane* getPriorityLane() const;
+    bool isFreeLane(LaneId id) const;
+    int calculateLanePriority(const Lane& lane) const;
+};
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\managers\TrafficManager.h =====//
+
+#ifndef TRAFFIC_MANAGER_H
+#define TRAFFIC_MANAGER_H
+
+#include <vector>
+#include <map>
+#include <atomic>
+#include <memory>
+#include <string>
+
+#include "core/Lane.h"
+#include "core/TrafficLight.h"
+#include "managers/FileHandler.h"
+
+class TrafficManager {
+public:
+    TrafficManager();
+    ~TrafficManager();
+
+    // Initialize the manager
+    bool initialize();
+
+    // Start the manager
+    void start();
+
+    // Stop the manager
+    void stop();
+
+    // Update the traffic state - now does file checking and priority updates
+    void update(uint32_t delta);
+
+    // Get the lanes for rendering
+    const std::vector<Lane*>& getLanes() const;
+
+    // Get the traffic light
+    TrafficLight* getTrafficLight() const;
+
+    // Check if a lane is being prioritized
+    bool isLanePrioritized(char laneId, int laneNumber) const;
+
+    // Get the priority lane
+    Lane* getPriorityLane() const;
+
+    // Get statistics for display
+    std::string getStatistics() const;
+
+private:
+    // Lanes for each road
+    std::vector<Lane*> lanes;
+
+    // Traffic light
+    TrafficLight* trafficLight;
+
+    // File handler for reading vehicle data
+    FileHandler* fileHandler;
+
+    // Flag to indicate if the manager is running
+    std::atomic<bool> running;
+
+    // Time tracking for periodic operations
+    uint32_t lastFileCheckTime;
+    uint32_t lastPriorityUpdateTime;
+
+    // Read vehicles from files - now called directly from update()
+    void readVehicles();
+
+    // Update lane priorities - now called directly from update()
+    void updatePriorities();
+
+    // Add a vehicle to the appropriate lane
+    void addVehicle(Vehicle* vehicle);
+
+    // Process vehicles in lanes
+    void processVehicles(uint32_t delta);
+
+    // Check for vehicles leaving the simulation
+    void checkVehicleBoundaries();
+
+    // Handle vehicle turning logic
+    void handleVehicleTurning(Vehicle* vehicle);
+
+    // Find lane by ID and number
+    Lane* findLane(char laneId, int laneNumber) const;
+};
+
+#endif // TRAFFIC_MANAGER_H
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\utils\DebugLogger.h =====//
+
+#ifndef DEBUG_LOGGER_H
+#define DEBUG_LOGGER_H
+
+#include <string>
+#include <vector>
+#include <mutex>
+
+class DebugLogger {
+public:
+    // Log levels
+    enum class LogLevel {
+        INFO,
+        WARNING,
+        ERROR,
+        DEBUG
+    };
+
+    // Initialize the logger
+    static void initialize(const std::string& logFilePath = "traffic_simulator.log");
+
+    // Log a message with a specific level
+    static void log(const std::string& message, LogLevel level = LogLevel::INFO);
+
+    // Get recent log messages for display
+    static std::vector<std::string> getRecentLogs(int count = 10);
+
+    // Clear all logs
+    static void clearLogs();
+
+    // Shutdown the logger
+    static void shutdown();
+
+private:
+    static std::string logFilePath;
+    static std::vector<std::string> recentLogs;
+    static std::mutex logMutex;
+    static bool initialized;
+
+    // Get timestamp for log messages
+    static std::string getTimestamp();
+
+    // Write to log file
+    static void writeToFile(const std::string& message);
+};
+
+#endif // DEBUG_LOGGER_H
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\utils\PriorityQueue.h =====//
+
+#ifndef PRIORITY_QUEUE_H
+#define PRIORITY_QUEUE_H
+
+#include <vector>
+#include <algorithm>
+#include <functional>
+#include <mutex>
+
+// A simple priority queue implementation for the traffic simulation
+template<typename T>
+class PriorityQueue {
+public:
+    // Element with priority
+    struct PriorityElement {
+        T element;
+        int priority;
+
+        // Constructor
+        PriorityElement(const T& e, int p) : element(e), priority(p) {}
+
+        // Comparison operator for std::sort
+        bool operator<(const PriorityElement& other) const {
+            return priority < other.priority;
+        }
+
+        bool operator>(const PriorityElement& other) const {
+            return priority > other.priority;
+        }
+    };
+
+    PriorityQueue() = default;
+    ~PriorityQueue() = default;
+
+    // Add element with priority
+    void enqueue(const T& element, int priority) {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        // Add element with priority
+        elements.push_back(PriorityElement(element, priority));
+
+        // Sort in descending order (higher priority first)
+        std::sort(elements.begin(), elements.end(), std::greater<PriorityElement>());
+    }
+
+    // Get the highest priority element
+    T dequeue() {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        if (elements.empty()) {
+            throw std::runtime_error("PriorityQueue is empty");
+        }
+
+        // Get the highest priority element
+        T element = elements.front().element;
+        elements.erase(elements.begin());
+
+        return element;
+    }
+
+    // Peek at the highest priority element without removing it
+    T peek() const {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        if (elements.empty()) {
+            throw std::runtime_error("PriorityQueue is empty");
+        }
+
+        return elements.front().element;
+    }
+
+    // Update the priority of an element if it exists
+    bool updatePriority(const T& element, int newPriority, std::function<bool(const T&, const T&)> comparator) {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        // Find the element
+        auto it = std::find_if(elements.begin(), elements.end(),
+                             [&](const PriorityElement& pe) {
+                                 return comparator(pe.element, element);
+                             });
+
+        if (it != elements.end()) {
+            // Update the priority
+            it->priority = newPriority;
+
+            // Re-sort the elements
+            std::sort(elements.begin(), elements.end(), std::greater<PriorityElement>());
+
+            return true;
+        }
+
+        return false;
+    }
+
+    // Check if the queue is empty
+    bool isEmpty() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements.empty();
+    }
+
+    // Get the size of the queue
+    size_t size() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements.size();
+    }
+
+    // Clear the queue
+    void clear() {
+        std::lock_guard<std::mutex> lock(mutex);
+        elements.clear();
+    }
+
+    // Get all elements for iteration (e.g., for rendering)
+    std::vector<T> getAllElements() const {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        std::vector<T> result;
+        result.reserve(elements.size());
+
+        for (const auto& pe : elements) {
+            result.push_back(pe.element);
+        }
+
+        return result;
+    }
+
+private:
+    std::vector<PriorityElement> elements;
+    mutable std::mutex mutex;
+};
+
+#endif // PRIORITY_QUEUE_H
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\utils\Queue.h =====//
+
+#ifndef QUEUE_H
+#define QUEUE_H
+
+#include <vector>
+#include <mutex>
+#include <stdexcept>
+
+// A thread-safe queue implementation for the traffic simulation
+template<typename T>
+class Queue {
+public:
+    Queue() = default;
+    ~Queue() = default;
+
+    // Add element to the queue
+    void enqueue(const T& element) {
+        std::lock_guard<std::mutex> lock(mutex);
+        elements.push_back(element);
+    }
+
+    // Remove and return the front element
+    T dequeue() {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        if (elements.empty()) {
+            throw std::runtime_error("Queue is empty");
+        }
+
+        T element = elements.front();
+        elements.erase(elements.begin());
+
+        return element;
+    }
+
+    // Peek at the front element without removing it
+    T peek() const {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        if (elements.empty()) {
+            throw std::runtime_error("Queue is empty");
+        }
+
+        return elements.front();
+    }
+
+    // Check if the queue is empty
+    bool isEmpty() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements.empty();
+    }
+
+    // Get the size of the queue
+    size_t size() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements.size();
+    }
+
+    // Clear the queue
+    void clear() {
+        std::lock_guard<std::mutex> lock(mutex);
+        elements.clear();
+    }
+
+    // Get all elements for iteration (e.g., for rendering)
+    std::vector<T> getAllElements() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements;
+    }
+
+private:
+    std::vector<T> elements;
+    mutable std::mutex mutex;
+};
+
+#endif // QUEUE_H
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\visualization\DebugOverlay.h =====//
+
+#ifndef DEBUG_OVERLAY_H
+#define DEBUG_OVERLAY_H
+
+#include <vector>
+#include <string>
+#include <SDL3/SDL.h>
+
+// Forward declarations
+class TrafficManager;
+
+class DebugOverlay {
+public:
+    DebugOverlay();
+    ~DebugOverlay();
+
+    // Initialize the overlay
+    void initialize(TrafficManager* trafficManager);
+
+    // Update overlay data
+    void update();
+
+    // Render the overlay
+    void render(SDL_Renderer* renderer);
+
+    // Toggle overlay visibility
+    void toggleVisibility();
+
+    // Check if overlay is visible
+    bool isVisible() const;
+
+    // Add a message to the overlay
+    void addMessage(const std::string& message);
+
+    // Clear all messages
+    void clearMessages();
+
+private:
+    bool visible;
+    TrafficManager* trafficManager;
+    std::vector<std::string> messages;
+
+    // Render vehicle counts for each lane
+    void renderVehicleCounts(SDL_Renderer* renderer);
+
+    // Render traffic light state
+    void renderTrafficLightState(SDL_Renderer* renderer);
+
+    // Render priority lane information
+    void renderPriorityInfo(SDL_Renderer* renderer);
+
+    // Render custom messages
+    void renderMessages(SDL_Renderer* renderer);
+
+    // Helper to render text
+    void renderText(SDL_Renderer* renderer, const std::string& text, int x, int y, SDL_Color color);
+};
+
+#endif // DEBUG_OVERLAY_H
+
+
+//===== END FILE: {file_path} =====//
+
+//===== FILE: E:\Collage\comp_Assignment\include\visualization\Renderer.h =====//
+
+#ifndef RENDERER_H
+#define RENDERER_H
+
+#include <SDL3/SDL.h>
+#include <string>
+#include <vector>
+#include <memory>
+
+class Lane;
+class Vehicle;
+class TrafficLight;
+class TrafficManager;
+
+class Renderer {
+public:
+    Renderer();
+    ~Renderer();
+
+    // Initialize renderer with window dimensions
+    bool initialize(int width, int height, const std::string& title);
+
+    // Start rendering loop
+    void startRenderLoop();
+
+    // Set traffic manager to render
+    void setTrafficManager(TrafficManager* manager);
+
+    // Render a single frame
+    void renderFrame();
+
+    // Clean up resources
+    void cleanup();
+
+    // Check if rendering is active
+    bool isActive() const;
+
+    // Toggle debug overlay
+    void toggleDebugOverlay();
+
+    // Set frame rate limiter
+    void setFrameRateLimit(int fps);
+
+private:
+    // SDL components
+    SDL_Window* window;
+    SDL_Renderer* renderer;
+    SDL_Texture* carTexture;
+    SDL_Surface* surface;
+
+    // Rendering state
+    bool active;
+    bool showDebugOverlay;
+    int frameRateLimit;
+    uint32_t lastFrameTime;
+
+    // Window dimensions
+    int windowWidth;
+    int windowHeight;
+
+    // Traffic manager
+    TrafficManager* trafficManager;
+
+    // Helper drawing functions
+    void drawRoadsAndLanes();
+    void drawTrafficLights();
+    void drawVehicles();
+    void drawDebugOverlay();
+    void drawLaneLabels();
+    void drawStatistics();
+
+    // Text rendering (simplified without TTF)
+    void drawText(const std::string& text, int x, int y, SDL_Color color);
+
+    // Load textures
+    bool loadTextures();
+
+    // Process SDL events
+    bool processEvents();
+
+    // Helper to draw a filled road arrow
+    void drawArrow(int x1, int y1, int x2, int y2, int x3, int y3, SDL_Color color);
+};
+
+#endif // RENDERER_H
+
+
+//===== END FILE: {file_path} =====//
+

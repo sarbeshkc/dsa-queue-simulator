@@ -1,55 +1,43 @@
-// include/managers/FileHandler.h (modified)
-#pragma once
-#include "core/Vehicle.h"
-#include "core/Constants.h"
-#include <memory>
-#include <vector>
+#ifndef FILE_HANDLER_H
+#define FILE_HANDLER_H
+
 #include <string>
-#include <map>
-#include <filesystem>
-#include <chrono>
+#include <vector>
 #include <mutex>
-#include <thread>
+#include "core/Vehicle.h"
 
 class FileHandler {
 public:
-    FileHandler();
-    ~FileHandler() = default;
+    FileHandler(const std::string& dataPath = "data/lanes");
+    ~FileHandler();
 
-    // Core file operations
-    std::vector<std::pair<LaneId, std::shared_ptr<Vehicle>>> readNewVehicles();
-    std::vector<std::pair<LaneId, std::shared_ptr<Vehicle>>> getReadyVehicles();
-    void clearLaneFiles();
+    // Read vehicles from lane files
+    std::vector<Vehicle*> readVehiclesFromFiles();
 
-    // State queries
-    bool isLaneFileAvailable(LaneId laneId) const;
-    size_t getVehicleCountInFile(LaneId laneId) const;
-    std::chrono::system_clock::time_point getLastModifiedTime(LaneId laneId) const;
+    // Write lane status to file (for debugging/monitoring)
+    void writeLaneStatus(char laneId, int laneNumber, int vehicleCount, bool isPriority);
+
+    // Check if files exist/are readable
+    bool checkFilesExist();
+
+    // Create directories and empty files if they don't exist
+    bool initializeFiles();
 
 private:
-    std::map<LaneId, std::filesystem::path> laneFiles;
-    std::filesystem::path dataDir;
-    std::filesystem::path vehicleDataFile; // Single file for all vehicles
-    std::mutex fileMutex;
-    std::thread watcherThread;
-    std::vector<std::pair<LaneId, std::shared_ptr<Vehicle>>> vehiclesReady;
+    std::string dataPath;
+    std::mutex mutex;
 
-    static constexpr int FILE_CHECK_INTERVAL_MS = 100;
-    static const std::string BASE_PATH;
+    // Lane file paths
+    std::string getLaneFilePath(char laneId) const;
 
-    // File operation methods
-    void initializeFileSystem();
-    void validateFileSystem() const;
-    std::vector<std::shared_ptr<Vehicle>> parseVehicleData(const std::string& data, LaneId laneId);
-    std::shared_ptr<Vehicle> parseVehicleLine(const std::string& line, LaneId laneId);
+    // Read vehicles from a specific lane file
+    std::vector<Vehicle*> readVehiclesFromFile(char laneId);
 
-    // File watching methods
-    void startFileWatching();
-    void watchForFileChanges();
+    // Parse a vehicle line from the file
+    Vehicle* parseVehicleLine(const std::string& line);
 
-    // Helper methods
-    std::filesystem::path getLaneFilePath(LaneId laneId) const;
-    void ensureDirectoryExists(const std::filesystem::path& dir);
-    void logFileOperation(const std::string& operation, const std::filesystem::path& filepath) const;
-    void handleFileError(const std::string& operation, const std::filesystem::path& filepath, const std::exception& e) const;
+    // Get the lane status file path
+    std::string getLaneStatusFilePath() const;
 };
+
+#endif // FILE_HANDLER_H

@@ -1,181 +1,254 @@
-// src/core/TrafficLight.cpp
 #include "core/TrafficLight.h"
-#include <cmath>
+#include "utils/DebugLogger.h"
+#include <algorithm>
+#include <iostream>
 
-TrafficLight::TrafficLight(LaneId lane)
-    : state(LightState::RED)
-    , nextState(LightState::RED)
-    , transitionProgress(0.0f)
-    , transitionDuration(1.0f)
-    , stateTimer(0.0f)
-    , isTransitioning(false)
-    , currentStateDuration(15.0f)  // Default duration for normal mode
-    , isPriorityMode(false)
-    , isForced(false)
-    , controlledLane(lane)
-{
-}
+// Define the threshold constants if not defined in Constants.h
+#define PRIORITY_THRESHOLD_HIGH 10
+#define PRIORITY_THRESHOLD_LOW 5
 
-void TrafficLight::update(float deltaTime) {
-    // Don't update if state is being forced
-    if (isForced) {
-        return;
-    }
+TrafficLight::TrafficLight()
+    : currentState(State::ALL_RED),
+      nextState(State::ALL_RED),
+      lastStateChangeTime(SDL_GetTicks()),
+      isPriorityMode(false),
+      shouldResumeNormalMode(false) {}
 
-    stateTimer += deltaTime;
+TrafficLight::~TrafficLight() {}
 
-    if (isTransitioning) {
-        // Handle transition animation
-        transitionProgress += deltaTime / transitionDuration;
-        if (transitionProgress >= 1.0f) {
-            state = nextState;
-            isTransitioning = false;
-            transitionProgress = 0.0f;
-            stateTimer = 0.0f;
-            currentStateDuration = getNextStateDuration();
+void TrafficLight::update(const std::vector<Lane*>& lanes) {
+    uint32_t currentTime = SDL_GetTicks();
+    uint32_t elapsedTime = currentTime - lastStateChangeTime;
+
+    // Check if AL2 has more than 10 vehicles (priority condition)
+    Lane* laneAL2 = nullptr;
+    for (auto lane : lanes) {
+        if (lane->getLaneId() == 'A' && lane->getLaneNumber() == 2) {
+            laneAL2 = lane;
+            break;
         }
     }
-    else if (stateTimer >= currentStateDuration) {
-        // Time to change state
-        LightState newState = (state == LightState::RED) ? LightState::GREEN : LightState::RED;
-        startTransition(newState);
+
+    // Priority mode logic
+    if (laneAL2 != nullptr) {
+        int vehicleCount = laneAL2->getVehicleCount();
+
+        // Enter priority mode if AL2 has more than 10 vehicles
+        if (!isPriorityMode && vehicleCount > PRIORITY_THRESHOLD_HIGH) {
+            isPriorityMode = true;
+            shouldResumeNormalMode = false;
+            DebugLogger::log("Entering priority mode for AL2 with " + std::to_string(vehicleCount) + " vehicles");
+
+            // Set next state to A_GREEN to prioritize AL2
+            if (currentState != State::A_GREEN) {
+                nextState = State::A_GREEN;
+            }
+        }
+        // Exit priority mode if AL2 has fewer than 5 vehicles
+        else if (isPriorityMode && vehicleCount < PRIORITY_THRESHOLD_LOW) {
+            isPriorityMode = false;
+            shouldResumeNormalMode = true;
+            DebugLogger::log("Exiting priority mode, AL2 now has " + std::to_string(vehicleCount) + " vehicles");
+        }
+    }
+
+    // Calculate green duration based on vehicle count
+    int duration = (currentState == State::ALL_RED) ? allRedDuration : greenDuration;
+
+    // If in priority mode, keep A green for longer proportional to vehicle count
+    if (isPriorityMode && currentState == State::A_GREEN && laneAL2 != nullptr) {
+        duration = calculateGreenDuration(laneAL2->getVehicleCount());
+    }
+
+    // State transition logic
+    if (elapsedTime >= duration) {
+        currentState = nextState;
+
+        // Calculate next state if not in priority mode
+        if (!isPriorityMode) {
+            nextState = calculateNextState(lanes);
+        }
+        // In priority mode, keep going back to A_GREEN after ALL_RED
+        else if (currentState == State::ALL_RED) {
+            nextState = State::A_GREEN;
+        }
+        // In priority mode, go to ALL_RED after A_GREEN
+        else if (currentState == State::A_GREEN) {
+            nextState = State::ALL_RED;
+        }
+
+        // Log state changes
+        DebugLogger::log("Traffic light state changed from " +
+                         std::to_string(static_cast<int>(currentState)) +
+                         " to " + std::to_string(static_cast<int>(nextState)));
+
+        lastStateChangeTime = currentTime;
     }
 }
 
-void TrafficLight::setState(LightState newState) {
-    if (state != newState && !isTransitioning) {
-        startTransition(newState);
+TrafficLight::State TrafficLight::calculateNextState(const std::vector<Lane*>& lanes) {
+    // If transitioning from a green state, go to ALL_RED first
+    if (currentState != State::ALL_RED) {
+        return State::ALL_RED;
+    }
+
+    // If coming from ALL_RED, determine which lane to serve next
+
+    // If resuming from priority mode, go through regular cycle starting from B
+    if (shouldResumeNormalMode) {
+        shouldResumeNormalMode = false;
+        return State::B_GREEN;
+    }
+
+    // Normal rotation: A -> ALL_RED -> B -> ALL_RED -> C -> ALL_RED -> D -> ALL_RED -> A
+    switch (currentState) {
+        case State::ALL_RED:
+            // After current state was ALL_RED, check what the previous state was
+            switch (nextState) {
+                case State::ALL_RED: return State::A_GREEN; // Initial state or after reset
+                case State::A_GREEN: return State::B_GREEN;
+                case State::B_GREEN: return State::C_GREEN;
+                case State::C_GREEN: return State::D_GREEN;
+                case State::D_GREEN: return State::A_GREEN;
+                default: return State::A_GREEN; // Fallback
+            }
+        default:
+            return State::ALL_RED; // Any other state transitions to ALL_RED
     }
 }
 
-void TrafficLight::forceState(LightState newState, bool force) {
-    isForced = force;
-    if (force) {
-        state = newState;
-        nextState = newState;
-        isTransitioning = false;
-        transitionProgress = 0.0f;
-        stateTimer = 0.0f;
-    } else {
-        isForced = false;
-        setState(newState);
+int TrafficLight::calculateGreenDuration(int vehicleCount) {
+    // Base formula from assignment: Total time = |V| * t
+    // Where t is 2 seconds per vehicle
+    const int timePerVehicle = 2000; // 2 seconds in milliseconds
+
+    // Calculate the total green duration based on vehicle count
+    // Ensure a minimum duration and cap it to prevent excessive wait times
+    int calculatedDuration = std::max(3000, std::min(vehicleCount * timePerVehicle, 15000));
+
+    return calculatedDuration;
+}
+
+void TrafficLight::setNextState(State state) {
+    nextState = state;
+}
+
+bool TrafficLight::isGreen(char lane) const {
+    switch (lane) {
+        case 'A': return currentState == State::A_GREEN;
+        case 'B': return currentState == State::B_GREEN;
+        case 'C': return currentState == State::C_GREEN;
+        case 'D': return currentState == State::D_GREEN;
+        default: return false;
     }
 }
 
-void TrafficLight::setPriorityMode(bool enabled) {
-    isPriorityMode = enabled;
-    // Adjust timings when priority mode changes
-    currentStateDuration = getStateDuration();
-}
+void TrafficLight::render(SDL_Renderer* renderer) {
+    // Draw traffic lights based on current state
+    drawLightForA(renderer, currentState != State::A_GREEN);
+    drawLightForB(renderer, currentState != State::B_GREEN);
+    drawLightForC(renderer, currentState != State::C_GREEN);
+    drawLightForD(renderer, currentState != State::D_GREEN);
 
-float TrafficLight::getStateDuration() const {
+    // Display priority mode indicator if active
     if (isPriorityMode) {
-        // In priority mode, A2 gets longer green, others longer red
-        if (controlledLane == LaneId::AL2_PRIORITY) {
-            return (state == LightState::GREEN) ? 30.0f : 5.0f;  // Priority lane gets more green time
-        } else {
-            return (state == LightState::GREEN) ? 5.0f : 30.0f;  // Others get less green time
-        }
-    }
-
-    // In normal mode, more balanced durations
-    return 15.0f;
-}
-
-float TrafficLight::getNextStateDuration() const {
-    if (isPriorityMode) {
-        if (controlledLane == LaneId::AL2_PRIORITY) {
-            return (nextState == LightState::GREEN) ? 30.0f : 5.0f;
-        } else {
-            return (nextState == LightState::GREEN) ? 5.0f : 30.0f;
-        }
-    }
-    return 15.0f;
-}
-
-void TrafficLight::startTransition(LightState newState) {
-    nextState = newState;
-    isTransitioning = true;
-    transitionProgress = 0.0f;
-    stateTimer = 0.0f;
-}
-
-void TrafficLight::render(SDL_Renderer* renderer, float x, float y) const {
-    // Constants for rendering
-    const float LIGHT_SIZE = 30.0f;
-    const float HOUSING_PADDING = 5.0f;
-    const float HOUSING_WIDTH = LIGHT_SIZE + (HOUSING_PADDING * 2.0f);
-    const float HOUSING_HEIGHT = (LIGHT_SIZE * 2.0f) + (HOUSING_PADDING * 3.0f);
-
-    // Draw housing (dark gray background)
-    SDL_FRect housing = {
-        x - HOUSING_PADDING,
-        y - HOUSING_PADDING,
-        HOUSING_WIDTH,
-        HOUSING_HEIGHT
-    };
-    SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
-    SDL_RenderFillRect(renderer, &housing);
-
-    // Draw border
-    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
-    SDL_RenderRect(renderer, &housing);
-
-    // Calculate light positions
-    float redY = y;
-    float greenY = y + LIGHT_SIZE + HOUSING_PADDING;
-
-    // Draw RED light
-    SDL_FRect redLight = {x, redY, LIGHT_SIZE, LIGHT_SIZE};
-    float redIntensity;
-    if (state == LightState::RED) {
-        redIntensity = isTransitioning ? (1.0f - transitionProgress) : 1.0f;
-    } else {
-        redIntensity = isTransitioning ? transitionProgress : 0.0f;
-    }
-    SDL_SetRenderDrawColor(renderer,
-        255,  // Red always max
-        static_cast<uint8_t>(50 * redIntensity),  // Slight glow
-        static_cast<uint8_t>(50 * redIntensity),  // Slight glow
-        255
-    );
-    SDL_RenderFillRect(renderer, &redLight);
-
-    // Draw GREEN light
-    SDL_FRect greenLight = {x, greenY, LIGHT_SIZE, LIGHT_SIZE};
-    float greenIntensity;
-    if (state == LightState::GREEN) {
-        greenIntensity = isTransitioning ? (1.0f - transitionProgress) : 1.0f;
-    } else {
-        greenIntensity = isTransitioning ? transitionProgress : 0.0f;
-    }
-    SDL_SetRenderDrawColor(renderer,
-        static_cast<uint8_t>(50 * greenIntensity),  // Slight glow
-        255,  // Green always max
-        static_cast<uint8_t>(50 * greenIntensity),  // Slight glow
-        255
-    );
-    SDL_RenderFillRect(renderer, &greenLight);
-
-    // Draw light borders
-    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
-    SDL_RenderRect(renderer, &redLight);
-    SDL_RenderRect(renderer, &greenLight);
-
-    // Add priority indicator if this is the priority lane
-    if (controlledLane == LaneId::AL2_PRIORITY) {
-        SDL_FRect priorityIndicator = {
-            x + LIGHT_SIZE + 5.0f,
-            y,
-            10.0f,
-            10.0f
-        };
-
-        // Pulsing effect for priority mode
-        uint8_t alpha = isPriorityMode ?
-            static_cast<uint8_t>(128 + 127 * sinf(SDL_GetTicks() / 500.0f)) : 100;
-
-        SDL_SetRenderDrawColor(renderer, 255, 165, 0, alpha);
+        SDL_SetRenderDrawColor(renderer, 255, 165, 0, 255); // Orange for priority
+        SDL_FRect priorityIndicator = {10, 10, 20, 20};
         SDL_RenderFillRect(renderer, &priorityIndicator);
+
+        // Draw "PRIORITY" text next to indicator
+        // Note: Text rendering would require TTF implementation
     }
+}
+
+void TrafficLight::drawLightForA(SDL_Renderer* renderer, bool isRed) {
+    SDL_FRect lightBox = {388, 288, 70, 30};
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderRect(renderer, &lightBox);
+
+    SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+    SDL_FRect innerBox = {389, 289, 68, 28};
+    SDL_RenderFillRect(renderer, &innerBox);
+
+    // Right turn light - always green
+    SDL_SetRenderDrawColor(renderer, 11, 156, 50, 255);
+    SDL_FRect right_Light = {433, 293, 20, 20};
+    SDL_RenderFillRect(renderer, &right_Light);
+
+    // Straight light - controlled by traffic signal
+    if(isRed)
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 11, 156, 50, 255);
+    SDL_FRect straight_Light = {393, 293, 20, 20};
+    SDL_RenderFillRect(renderer, &straight_Light);
+}
+
+void TrafficLight::drawLightForB(SDL_Renderer* renderer, bool isRed) {
+    SDL_FRect lightBox = {325, 488, 80, 30};
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderRect(renderer, &lightBox);
+
+    SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+    SDL_FRect innerBox = {326, 489, 78, 28};
+    SDL_RenderFillRect(renderer, &innerBox);
+
+    // left lane light -> always green
+    SDL_SetRenderDrawColor(renderer, 11, 156, 50, 255);
+    SDL_FRect left_Light = {330, 493, 20, 20};
+    SDL_RenderFillRect(renderer, &left_Light);
+
+    // middle lane light -> controlled by traffic signal
+    if(isRed)
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 11, 156, 50, 255);
+    SDL_FRect middle_Light = {380, 493, 20, 20};
+    SDL_RenderFillRect(renderer, &middle_Light);
+}
+
+void TrafficLight::drawLightForC(SDL_Renderer* renderer, bool isRed) {
+    SDL_FRect lightBox = {488, 388, 30, 70};
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderRect(renderer, &lightBox);
+
+    SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+    SDL_FRect innerBox = {489, 389, 28, 68};
+    SDL_RenderFillRect(renderer, &innerBox);
+
+    // right turn light - always green
+    SDL_SetRenderDrawColor(renderer, 11, 156, 50, 255);
+    SDL_FRect right_Light = {493, 433, 20, 20};
+    SDL_RenderFillRect(renderer, &right_Light);
+
+    // straight light
+    if(isRed)
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 11, 156, 50, 255);
+    SDL_FRect straight_Light = {493, 393, 20, 20};
+    SDL_RenderFillRect(renderer, &straight_Light);
+}
+
+void TrafficLight::drawLightForD(SDL_Renderer* renderer, bool isRed) {
+    SDL_FRect lightBox = {288, 325, 30, 90};
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderRect(renderer, &lightBox);
+
+    SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+    SDL_FRect innerBox = {289, 326, 28, 88};
+    SDL_RenderFillRect(renderer, &innerBox);
+
+    // left turn light - always green
+    SDL_SetRenderDrawColor(renderer, 11, 156, 50, 255);
+    SDL_FRect left_turn_Light = {293, 330, 20, 20};
+    SDL_RenderFillRect(renderer, &left_turn_Light);
+
+    // middle lane light
+    if(isRed)
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 11, 156, 50, 255);
+    SDL_FRect middle_Light = {293, 380, 20, 20};
+    SDL_RenderFillRect(renderer, &middle_Light);
 }

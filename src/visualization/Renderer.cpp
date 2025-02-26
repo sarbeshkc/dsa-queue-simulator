@@ -1,862 +1,461 @@
-// src/visualization/Renderer.cpp
 #include "visualization/Renderer.h"
-#include <iostream>
+#include "core/Lane.h"
+#include "core/Vehicle.h"
+#include "core/TrafficLight.h"
+#include "managers/TrafficManager.h"
+#include "utils/DebugLogger.h"
+
+#include <sstream>
+#include <algorithm>
 #include <cmath>
 
-// Constructor
-Renderer::Renderer()
-    : window(nullptr)
-    , renderer(nullptr)
-    , debugMode(false)
-    , showGrid(false) {
-}
+// Constants
+const int ROAD_WIDTH = 150;
+const int LANE_WIDTH = 50;
+const SDL_Color ROAD_COLOR = {50, 50, 50, 255};
+const SDL_Color LANE_MARKER_COLOR = {255, 255, 255, 255};
+const SDL_Color INTERSECTION_COLOR = {70, 70, 70, 255};
+const SDL_Color PRIORITY_INDICATOR_COLOR = {255, 165, 0, 255};
+const SDL_Color TEXT_COLOR = {0, 0, 0, 255};
 
-// Destructor
+Renderer::Renderer()
+    : window(nullptr),
+      renderer(nullptr),
+      carTexture(nullptr),
+      surface(nullptr),
+      active(false),
+      showDebugOverlay(true),
+      frameRateLimit(60),
+      lastFrameTime(0),
+      windowWidth(800),
+      windowHeight(800),
+      trafficManager(nullptr) {}
+
 Renderer::~Renderer() {
     cleanup();
 }
 
-bool Renderer::initialize() {
+bool Renderer::initialize(int width, int height, const std::string& title) {
+    windowWidth = width;
+    windowHeight = height;
+
+    // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
+        DebugLogger::log("Failed to initialize SDL: " + std::string(SDL_GetError()), DebugLogger::LogLevel::ERROR);
         return false;
     }
 
-    window = SDL_CreateWindow(
-        "Traffic Junction Simulator",
-        SimConstants::WINDOW_WIDTH,
-        SimConstants::WINDOW_HEIGHT,
-        SDL_WINDOW_RESIZABLE
-    );
-
+    // Create window
+    window = SDL_CreateWindow(title.c_str(), width, height, SDL_WINDOW_OPENGL);
     if (!window) {
-        std::cerr << "Window creation failed: " << SDL_GetError() << std::endl;
+        DebugLogger::log("Failed to create window: " + std::string(SDL_GetError()), DebugLogger::LogLevel::ERROR);
         return false;
     }
 
-    renderer = SDL_CreateRenderer(window, nullptr);
+    // Create renderer
+    renderer = SDL_CreateRenderer(window, NULL);
     if (!renderer) {
-        std::cerr << "Renderer creation failed: " << SDL_GetError() << std::endl;
+        DebugLogger::log("Failed to create renderer: " + std::string(SDL_GetError()), DebugLogger::LogLevel::ERROR);
+        return false;
+    }
+
+    // Load textures
+    if (!loadTextures()) {
+        DebugLogger::log("Failed to load textures", DebugLogger::LogLevel::ERROR);
+        return false;
+    }
+
+    active = true;
+    DebugLogger::log("Renderer initialized successfully");
+
+    return true;
+}
+
+bool Renderer::loadTextures() {
+    // Create a simple surface directly with a solid color to avoid SDL_MapRGB issues
+    surface = SDL_CreateSurface(20, 10, SDL_PIXELFORMAT_RGBA8888);
+    if (!surface) {
+        DebugLogger::log("Failed to create surface: " + std::string(SDL_GetError()), DebugLogger::LogLevel::ERROR);
+        return false;
+    }
+
+    // Fill with blue color using a simpler approach
+    // Create a color value manually
+    Uint32 blueColor = 0x0000FFFF; // RGBA format: blue with full alpha
+
+    // Fill the entire surface with this color
+    SDL_FillSurfaceRect(surface, NULL, blueColor);
+
+    carTexture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_DestroySurface(surface);
+    surface = nullptr;
+
+    if (!carTexture) {
+        DebugLogger::log("Failed to create car texture: " + std::string(SDL_GetError()), DebugLogger::LogLevel::ERROR);
         return false;
     }
 
     return true;
 }
 
+void Renderer::startRenderLoop() {
+    if (!active || !trafficManager) {
+        DebugLogger::log("Cannot start render loop - renderer not active or trafficManager not set", DebugLogger::LogLevel::ERROR);
+        return;
+    }
+
+    DebugLogger::log("Starting render loop");
+
+    uint32_t lastUpdate = SDL_GetTicks();
+    const int updateInterval = 16; // ~60 FPS
+
+    while (active) {
+        uint32_t currentTime = SDL_GetTicks();
+        uint32_t deltaTime = currentTime - lastUpdate;
+
+        if (deltaTime >= updateInterval) {
+            // Process events
+            active = processEvents();
+
+            // Update traffic manager
+            trafficManager->update(deltaTime);
+
+            // Render frame
+            renderFrame();
+
+            lastUpdate = currentTime;
+        }
+
+        // Delay to maintain frame rate
+        uint32_t frameDuration = SDL_GetTicks() - currentTime;
+        if (frameRateLimit > 0) {
+            uint32_t targetFrameTime = 1000 / frameRateLimit;
+            if (frameDuration < targetFrameTime) {
+                SDL_Delay(targetFrameTime - frameDuration);
+            }
+        }
+    }
+}
+
+bool Renderer::processEvents() {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+            case SDL_EVENT_QUIT:
+                return false;
+
+            case SDL_EVENT_KEY_DOWN: {
+                // Check based on the key scancode instead of using SDLK constants
+                SDL_Scancode scancode = event.key.scancode;
+
+                // D key scancode is usually 7 (for SDL_SCANCODE_D)
+                if (scancode == SDL_SCANCODE_D) {
+                    toggleDebugOverlay();
+                }
+                // Escape key scancode is usually 41 (for SDL_SCANCODE_ESCAPE)
+                else if (scancode == SDL_SCANCODE_ESCAPE) {
+                    return false;
+                }
+                break;
+            }
+        }
+    }
+
+    return true;
+}
+
+void Renderer::renderFrame() {
+    if (!active || !renderer || !trafficManager) {
+        return;
+    }
+
+    // Clear screen
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderClear(renderer);
+
+    // Draw roads and lanes
+    drawRoadsAndLanes();
+
+    // Draw traffic lights
+    drawTrafficLights();
+
+    // Draw vehicles
+    drawVehicles();
+
+    // Draw debug overlay if enabled
+    if (showDebugOverlay) {
+        drawDebugOverlay();
+    }
+
+    // Present render
+    SDL_RenderPresent(renderer);
+
+    // Update frame time
+    lastFrameTime = SDL_GetTicks();
+}
+
+void Renderer::drawRoadsAndLanes() {
+    // Draw intersection (dark gray)
+    SDL_SetRenderDrawColor(renderer, INTERSECTION_COLOR.r, INTERSECTION_COLOR.g, INTERSECTION_COLOR.b, INTERSECTION_COLOR.a);
+    SDL_FRect intersectionRect = {
+        static_cast<float>(windowWidth/2 - ROAD_WIDTH/2),
+        static_cast<float>(windowHeight/2 - ROAD_WIDTH/2),
+        static_cast<float>(ROAD_WIDTH),
+        static_cast<float>(ROAD_WIDTH)
+    };
+    SDL_RenderFillRect(renderer, &intersectionRect);
+
+    // Draw horizontal road (dark gray)
+    SDL_FRect horizontalRoad = {
+        0, static_cast<float>(windowHeight/2 - ROAD_WIDTH/2),
+        static_cast<float>(windowWidth), static_cast<float>(ROAD_WIDTH)
+    };
+    SDL_RenderFillRect(renderer, &horizontalRoad);
+
+    // Draw vertical road (dark gray)
+    SDL_FRect verticalRoad = {
+        static_cast<float>(windowWidth/2 - ROAD_WIDTH/2), 0,
+        static_cast<float>(ROAD_WIDTH), static_cast<float>(windowHeight)
+    };
+    SDL_RenderFillRect(renderer, &verticalRoad);
+
+    // Draw lane dividers (white dashed lines)
+    SDL_SetRenderDrawColor(renderer, LANE_MARKER_COLOR.r, LANE_MARKER_COLOR.g, LANE_MARKER_COLOR.b, LANE_MARKER_COLOR.a);
+
+    // Horizontal lane dividers
+    for (int i = 1; i < 3; i++) {
+        int y = windowHeight/2 - ROAD_WIDTH/2 + i * LANE_WIDTH;
+        for (int x = 0; x < windowWidth; x += 30) {
+            SDL_RenderLine(renderer, x, y, x + 15, y);
+        }
+    }
+
+    // Vertical lane dividers
+    for (int i = 1; i < 3; i++) {
+        int x = windowWidth/2 - ROAD_WIDTH/2 + i * LANE_WIDTH;
+        for (int y = 0; y < windowHeight; y += 30) {
+            SDL_RenderLine(renderer, x, y, x, y + 15);
+        }
+    }
+
+    // Draw lane labels
+    drawLaneLabels();
+
+    // If AL2 is priority lane and has more than 10 vehicles, highlight it
+    if (trafficManager) {
+        Lane* priorityLane = trafficManager->getPriorityLane();
+        if (priorityLane && priorityLane->getVehicleCount() > 10) {
+            // Highlight AL2 lane in orange
+            SDL_SetRenderDrawColor(renderer,
+                PRIORITY_INDICATOR_COLOR.r,
+                PRIORITY_INDICATOR_COLOR.g,
+                PRIORITY_INDICATOR_COLOR.b,
+                PRIORITY_INDICATOR_COLOR.a);
+
+            SDL_FRect priorityLaneRect = {
+                static_cast<float>(windowWidth/2 - ROAD_WIDTH/2 + LANE_WIDTH),
+                0,
+                static_cast<float>(LANE_WIDTH),
+                static_cast<float>(windowHeight/2 - ROAD_WIDTH/2)
+            };
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+            SDL_RenderFillRect(renderer, &priorityLaneRect);
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+        }
+    }
+}
+
+void Renderer::drawLaneLabels() {
+    SDL_SetRenderDrawColor(renderer, TEXT_COLOR.r, TEXT_COLOR.g, TEXT_COLOR.b, TEXT_COLOR.a);
+
+    // Road A labels
+    drawText("A", windowWidth/2, 10, TEXT_COLOR);
+    drawText("A1", windowWidth/2 - LANE_WIDTH, windowHeight/4, TEXT_COLOR);
+    drawText("A2", windowWidth/2, windowHeight/4, TEXT_COLOR);
+    drawText("A3", windowWidth/2 + LANE_WIDTH, windowHeight/4, TEXT_COLOR);
+
+    // Road B labels
+    drawText("B", windowWidth/2, windowHeight - 30, TEXT_COLOR);
+    drawText("B1", windowWidth/2 + LANE_WIDTH, 3*windowHeight/4, TEXT_COLOR);
+    drawText("B2", windowWidth/2, 3*windowHeight/4, TEXT_COLOR);
+    drawText("B3", windowWidth/2 - LANE_WIDTH, 3*windowHeight/4, TEXT_COLOR);
+
+    // Road C labels
+    drawText("C", windowWidth - 30, windowHeight/2, TEXT_COLOR);
+    drawText("C1", 3*windowWidth/4, windowHeight/2 - LANE_WIDTH, TEXT_COLOR);
+    drawText("C2", 3*windowWidth/4, windowHeight/2, TEXT_COLOR);
+    drawText("C3", 3*windowWidth/4, windowHeight/2 + LANE_WIDTH, TEXT_COLOR);
+
+    // Road D labels
+    drawText("D", 10, windowHeight/2, TEXT_COLOR);
+    drawText("D1", windowWidth/4, windowHeight/2 + LANE_WIDTH, TEXT_COLOR);
+    drawText("D2", windowWidth/4, windowHeight/2, TEXT_COLOR);
+    drawText("D3", windowWidth/4, windowHeight/2 - LANE_WIDTH, TEXT_COLOR);
+}
+
+void Renderer::drawTrafficLights() {
+    if (!trafficManager) {
+        return;
+    }
+
+    TrafficLight* trafficLight = trafficManager->getTrafficLight();
+    if (!trafficLight) {
+        return;
+    }
+
+    // Draw traffic lights
+    trafficLight->render(renderer);
+}
+
+void Renderer::drawVehicles() {
+    if (!trafficManager) {
+        return;
+    }
+
+    // Get all lanes from traffic manager
+    const std::vector<Lane*>& lanes = trafficManager->getLanes();
+
+    // Draw vehicles in each lane
+    for (Lane* lane : lanes) {
+        if (!lane) {
+            continue;
+        }
+
+        const std::vector<Vehicle*>& vehicles = lane->getVehicles();
+        int queuePos = 0;
+
+        for (Vehicle* vehicle : vehicles) {
+            if (vehicle) {
+                vehicle->render(renderer, carTexture, queuePos);
+                queuePos++;
+            }
+        }
+    }
+}
+
+void Renderer::drawDebugOverlay() {
+    // Draw semi-transparent background
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 128);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_FRect overlayRect = {10, 10, 250, 150};
+    SDL_RenderFillRect(renderer, &overlayRect);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+
+    // Draw statistics
+    drawStatistics();
+
+    // Draw recent logs
+    std::vector<std::string> logs = DebugLogger::getRecentLogs(5);
+    int y = 170;
+
+    for (const auto& log : logs) {
+        drawText(log.substr(0, 30), 10, y, {200, 200, 200, 255});
+        y += 20;
+    }
+}
+
+void Renderer::drawStatistics() {
+    if (!trafficManager) {
+        return;
+    }
+
+    // Get statistics from traffic manager
+    std::string stats = trafficManager->getStatistics();
+
+    // Split into lines
+    std::istringstream stream(stats);
+    std::string line;
+    int y = 20;
+
+    while (std::getline(stream, line)) {
+        drawText(line, 20, y, {255, 255, 255, 255});
+        y += 20;
+    }
+}
+
+void Renderer::drawText(const std::string& text, int x, int y, SDL_Color color) {
+    // Since we don't have SDL_ttf configured, draw a colored rectangle
+    // and note that we would normally render text here
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    SDL_FRect textRect = {static_cast<float>(x), static_cast<float>(y),
+                         static_cast<float>(8 * text.length()), 15};
+
+    // SDL3 uses SDL_RenderRect instead of SDL_RenderDrawRect
+    SDL_RenderRect(renderer, &textRect);
+
+    // In a real implementation with SDL_ttf, we would render the text here
+}
+
+void Renderer::drawArrow(int x1, int y1, int x2, int y2, int x3, int y3, SDL_Color color) {
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+
+    // Draw triangle outline
+    SDL_RenderLine(renderer, x1, y1, x2, y2);
+    SDL_RenderLine(renderer, x2, y2, x3, y3);
+    SDL_RenderLine(renderer, x3, y3, x1, y1);
+
+    // Fill triangle (simple implementation)
+    // Sort vertices by y
+    if (y1 > y2) { std::swap(y1, y2); std::swap(x1, x2); }
+    if (y1 > y3) { std::swap(y1, y3); std::swap(x1, x3); }
+    if (y2 > y3) { std::swap(y2, y3); std::swap(x2, x3); }
+
+    // Compute slopes
+    float dx1 = (y2 - y1) ? static_cast<float>(x2 - x1) / (y2 - y1) : 0;
+    float dx2 = (y3 - y1) ? static_cast<float>(x3 - x1) / (y3 - y1) : 0;
+    float dx3 = (y3 - y2) ? static_cast<float>(x3 - x2) / (y3 - y2) : 0;
+
+    float sx1 = x1, sx2 = x1;
+
+    // Fill top to middle
+    for (int y = y1; y < y2; y++) {
+        SDL_RenderLine(renderer, static_cast<int>(sx1), y, static_cast<int>(sx2), y);
+        sx1 += dx1;
+        sx2 += dx2;
+    }
+
+    sx1 = x2;
+
+    // Fill middle to bottom
+    for (int y = y2; y <= y3; y++) {
+        SDL_RenderLine(renderer, static_cast<int>(sx1), y, static_cast<int>(sx2), y);
+        sx1 += dx3;
+        sx2 += dx2;
+    }
+}
+
 void Renderer::cleanup() {
+    if (carTexture) {
+        SDL_DestroyTexture(carTexture);
+        carTexture = nullptr;
+    }
+
     if (renderer) {
         SDL_DestroyRenderer(renderer);
         renderer = nullptr;
     }
+
     if (window) {
         SDL_DestroyWindow(window);
         window = nullptr;
     }
-    SDL_Quit();
+
+    DebugLogger::log("Renderer resources cleaned up");
 }
 
-void Renderer::render(const TrafficManager& trafficManager) {
-    // Clear screen with black background
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-
-    // Core rendering
-    renderBackground();
-    renderRoads();
-    renderLanes();
-    renderIntersection();
-    renderCrosswalks();
-    renderStopLines();
-    renderDirectionalArrows();
-
-    // Traffic elements
-    renderTrafficLights(trafficManager.getTrafficLights());
-    renderVehicles(trafficManager.getActiveVehicles());
-
-    // Priority mode indicators
-    if (trafficManager.isInPriorityMode()) {
-        renderPriorityLaneIndicator();
-    }
-
-    // Debug visualization
-    if (debugMode) {
-        if (showGrid) {
-            drawDebugGrid();
-        }
-        renderLaneIdentifiers();
-        renderVehicleCount(trafficManager);
-    }
-
-    SDL_RenderPresent(renderer);
+bool Renderer::isActive() const {
+    return active;
 }
 
-void Renderer::renderBackground() {
-    // Create a gradient sky effect
-    for (int y = 0; y < SimConstants::WINDOW_HEIGHT; ++y) {
-        float t = static_cast<float>(y) / SimConstants::WINDOW_HEIGHT;
-        uint8_t skyR = static_cast<uint8_t>(135 * (1 - t) + 30 * t);
-        uint8_t skyG = static_cast<uint8_t>(206 * (1 - t) + 30 * t);
-        uint8_t skyB = static_cast<uint8_t>(235 * (1 - t) + 30 * t);
-
-        SDL_SetRenderDrawColor(renderer, skyR, skyG, skyB, 255);
-        SDL_RenderLine(renderer, 0, y, SimConstants::WINDOW_WIDTH, y);
-    }
-
-    // Render grass areas with texture
-    renderGrassAreas();
+void Renderer::toggleDebugOverlay() {
+    showDebugOverlay = !showDebugOverlay;
+    DebugLogger::log("Debug overlay " + std::string(showDebugOverlay ? "enabled" : "disabled"));
 }
 
-void Renderer::renderGrassAreas() {
-    using namespace SimConstants;
-    SDL_SetRenderDrawColor(renderer, 34, 139, 34, 255); // Base grass color
-
-    // Define the four corner grass areas around the intersection
-    SDL_FRect grassAreas[] = {
-        // Top-left quadrant
-        {0, 0, CENTER_X - ROAD_WIDTH/2.0f, CENTER_Y - ROAD_WIDTH/2.0f},
-        // Top-right quadrant
-        {CENTER_X + ROAD_WIDTH/2.0f, 0,
-         static_cast<float>(WINDOW_WIDTH) - (CENTER_X + ROAD_WIDTH/2.0f),
-         CENTER_Y - ROAD_WIDTH/2.0f},
-        // Bottom-left quadrant
-        {0, CENTER_Y + ROAD_WIDTH/2.0f,
-         CENTER_X - ROAD_WIDTH/2.0f,
-         static_cast<float>(WINDOW_HEIGHT) - (CENTER_Y + ROAD_WIDTH/2.0f)},
-        // Bottom-right quadrant
-        {CENTER_X + ROAD_WIDTH/2.0f, CENTER_Y + ROAD_WIDTH/2.0f,
-         static_cast<float>(WINDOW_WIDTH) - (CENTER_X + ROAD_WIDTH/2.0f),
-         static_cast<float>(WINDOW_HEIGHT) - (CENTER_Y + ROAD_WIDTH/2.0f)}
-    };
-
-    // Fill base grass areas
-    for (const auto& area : grassAreas) {
-        SDL_RenderFillRect(renderer, &area);
-    }
-
-    // Add grass texture variation using random dots
-    SDL_SetRenderDrawColor(renderer, 28, 120, 28, 255);
-    for (int i = 0; i < 2000; i++) {
-        int x = rand() % WINDOW_WIDTH;
-        int y = rand() % WINDOW_HEIGHT;
-
-        // Check if point is in grass area (not on road)
-        bool inRoad = (x > CENTER_X - ROAD_WIDTH/2 && x < CENTER_X + ROAD_WIDTH/2) ||
-                     (y > CENTER_Y - ROAD_WIDTH/2 && y < CENTER_Y + ROAD_WIDTH/2);
-
-        if (!inRoad) {
-            SDL_RenderPoint(renderer, x, y);
-        }
-    }
+void Renderer::setFrameRateLimit(int fps) {
+    frameRateLimit = fps;
 }
 
-void Renderer::renderRoads() {
-    using namespace SimConstants;
-
-    // Main road surface with asphalt texture
-    SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
-
-    // Draw horizontal road
-    SDL_FRect horizontalRoad = {
-        0, CENTER_Y - ROAD_WIDTH/2.0f,
-        static_cast<float>(WINDOW_WIDTH),
-        static_cast<float>(ROAD_WIDTH)
-    };
-    SDL_RenderFillRect(renderer, &horizontalRoad);
-
-    // Draw vertical road
-    SDL_FRect verticalRoad = {
-        CENTER_X - ROAD_WIDTH/2.0f, 0,
-        static_cast<float>(ROAD_WIDTH),
-        static_cast<float>(WINDOW_HEIGHT)
-    };
-    SDL_RenderFillRect(renderer, &verticalRoad);
-
-    // Add road edges and curbs
-    renderRoadEdges();
-}
-
-void Renderer::renderRoadEdges() {
-    using namespace SimConstants;
-
-    SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
-    const float CURB_WIDTH = 4.0f;
-
-    // Render curbs for all road edges
-    SDL_FRect curbs[] = {
-        // Horizontal road curbs
-        {0, CENTER_Y - ROAD_WIDTH/2.0f,
-         static_cast<float>(WINDOW_WIDTH), CURB_WIDTH},
-        {0, CENTER_Y + ROAD_WIDTH/2.0f - CURB_WIDTH,
-         static_cast<float>(WINDOW_WIDTH), CURB_WIDTH},
-
-        // Vertical road curbs
-        {CENTER_X - ROAD_WIDTH/2.0f, 0,
-         CURB_WIDTH, static_cast<float>(WINDOW_HEIGHT)},
-        {CENTER_X + ROAD_WIDTH/2.0f - CURB_WIDTH, 0,
-         CURB_WIDTH, static_cast<float>(WINDOW_HEIGHT)}
-    };
-
-    for (const auto& curb : curbs) {
-        SDL_RenderFillRect(renderer, &curb);
-    }
-}
-
-void Renderer::renderLanes() {
-    using namespace SimConstants;
-
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    float laneWidth = ROAD_WIDTH / 3.0f;
-
-    // Draw horizontal lane dividers
-    for (int i = 1; i < 3; i++) {
-        float y = CENTER_Y - ROAD_WIDTH/2.0f + i * laneWidth;
-        renderDashedLine(0, y, WINDOW_WIDTH, y);
-    }
-
-    // Draw vertical lane dividers
-    for (int i = 1; i < 3; i++) {
-        float x = CENTER_X - ROAD_WIDTH/2.0f + i * laneWidth;
-        renderDashedLine(x, 0, x, WINDOW_HEIGHT);
-    }
-
-    // Render special lane markings
-    renderPriorityLane();
-}
-
-void Renderer::renderPriorityLane() {
-    using namespace SimConstants;
-
-    // Highlight AL2 priority lane with semi-transparent orange
-    SDL_SetRenderDrawColor(renderer, 255, 165, 0, 100);
-    float laneWidth = ROAD_WIDTH / 3.0f;
-
-    SDL_FRect priorityLane = {
-        0,
-        CENTER_Y - laneWidth/2.0f,
-        static_cast<float>(CENTER_X - ROAD_WIDTH/2.0f),
-        laneWidth
-    };
-
-    SDL_RenderFillRect(renderer, &priorityLane);
-}
-
-void Renderer::renderTrafficLight(float x, float y, float rotation, LightState state) {
-    // Constants for traffic light dimensions
-    const float LIGHT_SPACING = 15.0f;        // Space between each light
-    const float LIGHT_RADIUS = LIGHT_SIZE/2.0f;
-
-    // Calculate oriented position for the traffic light housing
-    float orientedX = x;
-    float orientedY = y;
-
-    // Apply rotation if needed to orient the traffic light correctly
-    if (rotation != 0.0f) {
-        SDL_FPoint rotated = rotatePoint(x, y,
-            static_cast<float>(SimConstants::CENTER_X),
-            static_cast<float>(SimConstants::CENTER_Y),
-            rotation
-        );
-        orientedX = rotated.x;
-        orientedY = rotated.y;
-    }
-
-    // Draw the traffic light housing (black background box)
-    SDL_SetRenderDrawColor(renderer, 70, 70, 70, 255);  // Dark gray color
-    SDL_FRect housing = {
-        orientedX - HOUSING_PADDING,
-        orientedY - HOUSING_PADDING,
-        LIGHT_SIZE + (HOUSING_PADDING * 2.0f),
-        (LIGHT_SIZE * 3.0f) + (HOUSING_PADDING * 4.0f)  // Room for three lights
-    };
-    SDL_RenderFillRect(renderer, &housing);
-
-    // Draw outline for the housing
-    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);  // Lighter gray for border
-    SDL_RenderRect(renderer, &housing);
-
-    // Calculate positions for each light
-    float centerX = orientedX + LIGHT_SIZE/2.0f;
-    float redY = orientedY + LIGHT_SIZE/2.0f;
-    float yellowY = redY + LIGHT_SIZE + LIGHT_SPACING;
-    float greenY = yellowY + LIGHT_SIZE + LIGHT_SPACING;
-
-    // Draw red light
-    SDL_SetRenderDrawColor(renderer,
-        state == LightState::RED ? 255 : 64,  // Bright red when active, dim when inactive
-        0, 0, 255);
-    renderCircle(centerX, redY, LIGHT_RADIUS);
-
-    // Draw yellow light (always dim in two-state system)
-    SDL_SetRenderDrawColor(renderer, 64, 64, 0, 255);
-    renderCircle(centerX, yellowY, LIGHT_RADIUS);
-
-    // Draw green light
-    SDL_SetRenderDrawColor(renderer, 0,
-        state == LightState::GREEN ? 255 : 64,  // Bright green when active, dim when inactive
-        0, 255);
-    renderCircle(centerX, greenY, LIGHT_RADIUS);
-}
-
-void Renderer::renderTrafficLights(const std::map<LaneId, TrafficLight>& lights) {
-    using namespace SimConstants;
-
-    // Define the standard positions for traffic lights
-    struct LightPosition {
-        float x;
-        float y;
-        float rotation;
-        LaneId laneId;
-    };
-
-    // Define fixed positions for each traffic light
-    const LightPosition positions[] = {
-        // West approach (AL2 - Priority lane)
-        {
-            static_cast<float>(CENTER_X - ROAD_WIDTH/2.0f - 50.0f),
-            static_cast<float>(CENTER_Y - LIGHT_SIZE * 3.0f),
-            0.0f,
-            LaneId::AL2_PRIORITY
-        },
-        // North approach (BL2)
-        {
-            static_cast<float>(CENTER_X - LIGHT_SIZE * 3.0f),
-            static_cast<float>(CENTER_Y - ROAD_WIDTH/2.0f - 50.0f),
-            90.0f * static_cast<float>(M_PI) / 180.0f,
-            LaneId::BL2_NORMAL
-        },
-        // East approach (CL2)
-        {
-            static_cast<float>(CENTER_X + ROAD_WIDTH/2.0f + 50.0f),
-            static_cast<float>(CENTER_Y - LIGHT_SIZE * 3.0f),
-            180.0f * static_cast<float>(M_PI) / 180.0f,
-            LaneId::CL2_NORMAL
-        },
-        // South approach (DL2)
-        {
-            static_cast<float>(CENTER_X - LIGHT_SIZE * 3.0f),
-            static_cast<float>(CENTER_Y + ROAD_WIDTH/2.0f + 50.0f),
-            270.0f * static_cast<float>(M_PI) / 180.0f,
-            LaneId::DL2_NORMAL
-        }
-    };
-
-    // Render each traffic light
-    for (const auto& position : positions) {
-        auto it = lights.find(position.laneId);
-        if (it != lights.end()) {
-            renderTrafficLight(
-                position.x,
-                position.y,
-                position.rotation,
-                it->second.getState()
-            );
-        }
-    }
-}
-
-void Renderer::renderVehicles(const std::map<uint32_t, std::shared_ptr<Vehicle>>& vehicles) {
-    for (const auto& [id, vehicle] : vehicles) {
-        // Get vehicle data for rendering
-        float x = vehicle->getX();
-        float y = vehicle->getY();
-        Direction dir = vehicle->getDirection();
-        bool isPriority = vehicle->getCurrentLane() == LaneId::AL2_PRIORITY;
-        float angle = vehicle->getAngle();
-        bool isMoving = vehicle->isInProcess();
-
-        // Render the vehicle
-        renderVehicle(x, y, dir, isPriority, angle, isMoving);
-    }
-}
-
-void Renderer::renderVehicle(float x, float y, Direction dir, bool isPriority, float angle, bool isMoving) {
-    const float halfWidth = VEHICLE_WIDTH / 2.0f;
-    const float halfHeight = VEHICLE_HEIGHT / 2.0f;
-
-    // Create a smoother vehicle shape
-    SDL_FPoint vertices[8] = {
-        // Front
-        {x + (halfWidth * 0.8f) * cosf(angle), y + (halfWidth * 0.8f) * sinf(angle)},
-        // Front right
-        {x + halfWidth * cosf(angle + 0.4f), y + halfWidth * sinf(angle + 0.4f)},
-        // Right
-        {x + halfWidth * cosf(angle + M_PI/2), y + halfWidth * sinf(angle + M_PI/2)},
-        // Back right
-        {x + halfWidth * cosf(angle + M_PI - 0.4f), y + halfWidth * sinf(angle + M_PI - 0.4f)},
-        // Back
-        {x - (halfWidth * 0.8f) * cosf(angle), y - (halfWidth * 0.8f) * sinf(angle)},
-        // Back left
-        {x + halfWidth * cosf(angle + M_PI + 0.4f), y + halfWidth * sinf(angle + M_PI + 0.4f)},
-        // Left
-        {x + halfWidth * cosf(angle - M_PI/2), y + halfWidth * sinf(angle - M_PI/2)},
-        // Front left
-        {x + halfWidth * cosf(angle - 0.4f), y + halfWidth * sinf(angle - 0.4f)}
-    };
-
-    // Draw shadow
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 100);
-    for (int i = 0; i < 8; i++) {
-        SDL_RenderLine(renderer,
-            vertices[i].x + 2, vertices[i].y + 2,
-            vertices[(i + 1) % 8].x + 2, vertices[(i + 1) % 8].y + 2);
-    }
-
-    // Vehicle body color
-    if (isPriority) {
-        SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255); // Orange for priority
-    } else {
-        SDL_SetRenderDrawColor(renderer, 30, 144, 255, 255); // Blue for normal
-    }
-
-    // Draw vehicle body
-    for (int i = 0; i < 8; i++) {
-        SDL_RenderLine(renderer,
-            vertices[i].x, vertices[i].y,
-            vertices[(i + 1) % 8].x, vertices[(i + 1) % 8].y);
-    }
-
-    // Draw headlights
-    SDL_SetRenderDrawColor(renderer, 255, 255, 200, 255);
-    renderCircle(vertices[0].x - 5 * cosf(angle + 0.2f),
-                vertices[0].y - 5 * sinf(angle + 0.2f), 3);
-    renderCircle(vertices[0].x - 5 * cosf(angle - 0.2f),
-                vertices[0].y - 5 * sinf(angle - 0.2f), 3);
-
-    // Direction indicators
-    if (dir != Direction::STRAIGHT) {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 200);
-        if (dir == Direction::LEFT) {
-            renderCircle(vertices[6].x, vertices[6].y, 4);
-        } else {
-            renderCircle(vertices[2].x, vertices[2].y, 4);
-        }
-    }
-
-    // Movement trail
-    if (isMoving) {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 50);
-        float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
-        for (int i = 1; i <= 3; i++) {
-            float offset = i * (5.0f + sinf(t * 4.0f) * 2.0f);
-            float trailX = x - offset * cosf(angle);
-            float trailY = y - offset * sinf(angle);
-            renderCircle(trailX, trailY, 2);
-        }
-    }
-}
-
-void Renderer::renderIntersection() {
-    using namespace SimConstants;
-
-    // Draw intersection box with slightly darker asphalt
-    SDL_SetRenderDrawColor(renderer, 45, 45, 45, 255);
-    SDL_FRect intersection = {
-        CENTER_X - ROAD_WIDTH/2.0f,
-        CENTER_Y - ROAD_WIDTH/2.0f,
-        static_cast<float>(ROAD_WIDTH),
-        static_cast<float>(ROAD_WIDTH)
-    };
-    SDL_RenderFillRect(renderer, &intersection);
-
-    // Draw intersection guidelines
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 100);
-
-    // Center cross guidelines
-    renderDashedLine(
-        CENTER_X - ROAD_WIDTH/2.0f, CENTER_Y,
-        CENTER_X + ROAD_WIDTH/2.0f, CENTER_Y
-    );
-    renderDashedLine(
-        CENTER_X, CENTER_Y - ROAD_WIDTH/2.0f,
-        CENTER_X, CENTER_Y + ROAD_WIDTH/2.0f
-    );
-
-    // Draw turning guide arcs
-    renderTurningGuides();
-}
-
-void Renderer::renderTurningGuides() {
-    using namespace SimConstants;
-
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 50);
-    const int SEGMENTS = 32;
-    const float TURN_RADIUS = ROAD_WIDTH / 2.0f;
-
-    // Draw turning guide arcs for each corner
-    for (int corner = 0; corner < 4; corner++) {
-        float centerX = CENTER_X + ((corner & 1) ? ROAD_WIDTH/4.0f : -ROAD_WIDTH/4.0f);
-        float centerY = CENTER_Y + ((corner & 2) ? ROAD_WIDTH/4.0f : -ROAD_WIDTH/4.0f);
-
-        for (int i = 0; i < SEGMENTS; i++) {
-            float startAngle = (corner * 90 + i * 90.0f / SEGMENTS) * M_PI / 180.0f;
-            float endAngle = (corner * 90 + (i + 1) * 90.0f / SEGMENTS) * M_PI / 180.0f;
-
-            float x1 = centerX + TURN_RADIUS * cosf(startAngle);
-            float y1 = centerY + TURN_RADIUS * sinf(startAngle);
-            float x2 = centerX + TURN_RADIUS * cosf(endAngle);
-            float y2 = centerY + TURN_RADIUS * sinf(endAngle);
-
-            SDL_RenderLine(renderer, x1, y1, x2, y2);
-        }
-    }
-}
-
-void Renderer::renderStopLines() {
-    using namespace SimConstants;
-
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    const float STOP_LINE_WIDTH = 8.0f;
-    const float OFFSET = ROAD_WIDTH/2.0f - 20.0f;
-
-    // Draw stop lines at each intersection approach
-    SDL_FRect stopLines[] = {
-        // West approach
-        {CENTER_X - OFFSET - STOP_LINE_WIDTH,
-         CENTER_Y - LANE_WIDTH,
-         STOP_LINE_WIDTH,
-         LANE_WIDTH * 2},
-
-        // North approach
-        {CENTER_X - LANE_WIDTH,
-         CENTER_Y - OFFSET - STOP_LINE_WIDTH,
-         LANE_WIDTH * 2,
-         STOP_LINE_WIDTH},
-
-        // East approach
-        {CENTER_X + OFFSET,
-         CENTER_Y - LANE_WIDTH,
-         STOP_LINE_WIDTH,
-         LANE_WIDTH * 2},
-
-        // South approach
-        {CENTER_X - LANE_WIDTH,
-         CENTER_Y + OFFSET,
-         LANE_WIDTH * 2,
-         STOP_LINE_WIDTH}
-    };
-
-    for (const auto& line : stopLines) {
-        SDL_RenderFillRect(renderer, &line);
-    }
-}
-
-void Renderer::renderDirectionalArrows() {
-    using namespace SimConstants;
-
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 128);
-    const float ARROW_DISTANCE = 150.0f;
-
-    // Draw direction arrows for each lane
-    for (int lane = -1; lane <= 1; lane++) {
-        float laneOffset = static_cast<float>(lane * LANE_WIDTH);
-
-        // West approach (right-side driving)
-        drawArrow(CENTER_X - ARROW_DISTANCE, CENTER_Y + laneOffset,
-                 0.0f, Direction::STRAIGHT);
-
-        // North approach
-        drawArrow(CENTER_X + laneOffset, CENTER_Y - ARROW_DISTANCE,
-                 static_cast<float>(M_PI / 2), Direction::STRAIGHT);
-
-        // East approach
-        drawArrow(CENTER_X + ARROW_DISTANCE, CENTER_Y + laneOffset,
-                 static_cast<float>(M_PI), Direction::STRAIGHT);
-
-        // South approach
-        drawArrow(CENTER_X + laneOffset, CENTER_Y + ARROW_DISTANCE,
-                 static_cast<float>(-M_PI / 2), Direction::STRAIGHT);
-    }
-
-    // Add left turn arrows for free lanes
-    drawArrow(CENTER_X - ARROW_DISTANCE, CENTER_Y + LANE_WIDTH,
-             0.0f, Direction::LEFT);
-    drawArrow(CENTER_X + LANE_WIDTH, CENTER_Y - ARROW_DISTANCE,
-             static_cast<float>(M_PI / 2), Direction::LEFT);
-    drawArrow(CENTER_X + ARROW_DISTANCE, CENTER_Y + LANE_WIDTH,
-             static_cast<float>(M_PI), Direction::LEFT);
-    drawArrow(CENTER_X + LANE_WIDTH, CENTER_Y + ARROW_DISTANCE,
-             static_cast<float>(-M_PI / 2), Direction::LEFT);
-}
-
-void Renderer::drawArrow(float x, float y, float angle, Direction dir) {
-    const float ARROW_LENGTH = 30.0f;
-    const float HEAD_SIZE = 10.0f;
-    const float HEAD_ANGLE = static_cast<float>(M_PI / 6);
-
-    float cosA = cosf(angle);
-    float sinA = sinf(angle);
-
-    // Draw arrow shaft
-    float endX = x + ARROW_LENGTH * cosA;
-    float endY = y + ARROW_LENGTH * sinA;
-    SDL_RenderLine(renderer, x, y, endX, endY);
-
-    // Draw arrow head
-    float leftX = endX - HEAD_SIZE * cosf(angle + HEAD_ANGLE);
-    float leftY = endY - HEAD_SIZE * sinf(angle + HEAD_ANGLE);
-    float rightX = endX - HEAD_SIZE * cosf(angle - HEAD_ANGLE);
-    float rightY = endY - HEAD_SIZE * sinf(angle - HEAD_ANGLE);
-
-    SDL_RenderLine(renderer, endX, endY, leftX, leftY);
-    SDL_RenderLine(renderer, endX, endY, rightX, rightY);
-
-    // Add curved arrow for left turns
-    if (dir == Direction::LEFT) {
-        const float CURVE_RADIUS = 15.0f;
-        const int SEGMENTS = 8;
-
-        for (int i = 0; i < SEGMENTS; i++) {
-            float startAngle = angle - M_PI/2 + (i * M_PI/2) / SEGMENTS;
-            float endAngle = angle - M_PI/2 + ((i + 1) * M_PI/2) / SEGMENTS;
-
-            float x1 = x + CURVE_RADIUS * cosf(startAngle);
-            float y1 = y + CURVE_RADIUS * sinf(startAngle);
-            float x2 = x + CURVE_RADIUS * cosf(endAngle);
-            float y2 = y + CURVE_RADIUS * sinf(endAngle);
-
-            SDL_RenderLine(renderer, x1, y1, x2, y2);
-        }
-    }
-}
-
-void Renderer::renderCircle(float x, float y, float radius) {
-    const int SEGMENTS = 16;
-    for (int i = 0; i < SEGMENTS; i++) {
-        float angle1 = 2.0f * M_PI * i / SEGMENTS;
-        float angle2 = 2.0f * M_PI * (i + 1) / SEGMENTS;
-
-        SDL_RenderLine(renderer,
-            x + radius * cosf(angle1),
-            y + radius * sinf(angle1),
-            x + radius * cosf(angle2),
-            y + radius * sinf(angle2)
-        );
-    }
-}
-
-void Renderer::renderDashedLine(float x1, float y1, float x2, float y2) {
-    float dx = x2 - x1;
-    float dy = y2 - y1;
-    float length = std::sqrt(dx * dx + dy * dy);
-    float nx = dx / length;
-    float ny = dy / length;
-
-    float x = x1;
-    float y = y1;
-    bool drawing = true;
-    float remainingLength = length;
-
-    while (remainingLength > 0) {
-        float segmentLength = std::min(drawing ? DASH_LENGTH : GAP_LENGTH, remainingLength);
-
-        if (drawing) {
-            float endX = x + nx * segmentLength;
-            float endY = y + ny * segmentLength;
-            SDL_RenderLine(renderer, x, y, endX, endY);
-        }
-
-        x += nx * segmentLength;
-        y += ny * segmentLength;
-        remainingLength -= segmentLength;
-        drawing = !drawing;
-    }
-}
-
-void Renderer::renderCrosswalks() {
-    using namespace SimConstants;
-
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    const float STRIPE_WIDTH = 5.0f;
-    const float STRIPE_LENGTH = 30.0f;
-    const float STRIPE_GAP = 5.0f;
-    const float CROSSWALK_WIDTH = 20.0f;
-
-    // Render crosswalks on all four sides of the intersection
-    for (int i = 0; i < 4; ++i) {
-        float angle = static_cast<float>(i * 90) * static_cast<float>(M_PI) / 180.0f;
-        float baseX = CENTER_X + cosf(angle) * (ROAD_WIDTH / 2.0f - CROSSWALK_WIDTH);
-        float baseY = CENTER_Y + sinf(angle) * (ROAD_WIDTH / 2.0f - CROSSWALK_WIDTH);
-
-        // Draw zebra stripes
-        for (float offset = 0; offset < ROAD_WIDTH; offset += STRIPE_WIDTH + STRIPE_GAP) {
-            SDL_FPoint p1 = rotatePoint(baseX, baseY + offset, CENTER_X, CENTER_Y, angle);
-            SDL_FPoint p2 = rotatePoint(baseX + STRIPE_LENGTH, baseY + offset, CENTER_X, CENTER_Y, angle);
-
-            SDL_FRect stripe = {
-                p1.x, p1.y,
-                STRIPE_WIDTH,
-                p2.y - p1.y
-            };
-            SDL_RenderFillRect(renderer, &stripe);
-        }
-    }
-}
-
-void Renderer::renderPriorityLaneIndicator() {
-    using namespace SimConstants;
-
-    // Draw priority mode indicator in top-left corner
-    const float INDICATOR_SIZE = 30.0f;
-    const float PADDING = 10.0f;
-
-    SDL_SetRenderDrawColor(renderer, 255, 69, 0, 255); // Orange for priority
-    SDL_FRect indicator = {
-        PADDING,
-        PADDING,
-        INDICATOR_SIZE,
-        INDICATOR_SIZE
-    };
-    SDL_RenderFillRect(renderer, &indicator);
-
-    // Add pulsing effect
-    float t = static_cast<float>(SDL_GetTicks()) / 1000.0f;
-    uint8_t alpha = static_cast<uint8_t>(128 + 127 * sinf(t * 2.0f));
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, alpha);
-    SDL_RenderRect(renderer, &indicator);
-}
-
-void Renderer::renderLaneIdentifiers() {
-    using namespace SimConstants;
-
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    const float OFFSET = ROAD_WIDTH / 2.0f + 30.0f;
-
-    // Define lane positions and labels
-    struct LaneLabel {
-        float x, y;
-        LaneId id;
-    };
-
-    LaneLabel labels[] = {
-        {CENTER_X - OFFSET, CENTER_Y - LANE_WIDTH, LaneId::AL1_INCOMING},
-        {CENTER_X - OFFSET, CENTER_Y, LaneId::AL2_PRIORITY},
-        {CENTER_X - OFFSET, CENTER_Y + LANE_WIDTH, LaneId::AL3_FREELANE},
-
-        {CENTER_X - LANE_WIDTH, CENTER_Y - OFFSET, LaneId::BL1_INCOMING},
-        {CENTER_X, CENTER_Y - OFFSET, LaneId::BL2_NORMAL},
-        {CENTER_X + LANE_WIDTH, CENTER_Y - OFFSET, LaneId::BL3_FREELANE},
-
-        {CENTER_X + OFFSET, CENTER_Y - LANE_WIDTH, LaneId::CL1_INCOMING},
-        {CENTER_X + OFFSET, CENTER_Y, LaneId::CL2_NORMAL},
-        {CENTER_X + OFFSET, CENTER_Y + LANE_WIDTH, LaneId::CL3_FREELANE},
-
-        {CENTER_X - LANE_WIDTH, CENTER_Y + OFFSET, LaneId::DL1_INCOMING},
-        {CENTER_X, CENTER_Y + OFFSET, LaneId::DL2_NORMAL},
-        {CENTER_X + LANE_WIDTH, CENTER_Y + OFFSET, LaneId::DL3_FREELANE}
-    };
-
-    // Draw background rectangles for labels
-    for (const auto& label : labels) {
-        SDL_FRect bg = {
-            label.x - 25.0f,
-            label.y - 12.0f,
-            50.0f,
-            24.0f
-        };
-
-        // Different colors for different lane types
-        if (label.id == LaneId::AL2_PRIORITY) {
-            SDL_SetRenderDrawColor(renderer, 255, 165, 0, 128); // Orange for priority
-        } else if (static_cast<int>(label.id) % 3 == 2) {
-            SDL_SetRenderDrawColor(renderer, 0, 255, 0, 128); // Green for free lanes
-        } else {
-            SDL_SetRenderDrawColor(renderer, 100, 100, 100, 128); // Gray for normal lanes
-        }
-
-        SDL_RenderFillRect(renderer, &bg);
-    }
-}
-
-void Renderer::renderVehicleCount(const TrafficManager& trafficManager) {
-    using namespace SimConstants;
-
-    const float PADDING = 10.0f;
-    const float BOX_WIDTH = 150.0f;
-    const float BOX_HEIGHT = 80.0f;
-
-    // Draw background panel
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200);
-    SDL_FRect countBox = {
-        PADDING,
-        WINDOW_HEIGHT - BOX_HEIGHT - PADDING,
-        BOX_WIDTH,
-        BOX_HEIGHT
-    };
-    SDL_RenderFillRect(renderer, &countBox);
-
-    // Draw separator lines
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 128);
-    SDL_RenderLine(renderer,
-        countBox.x,
-        countBox.y + BOX_HEIGHT / 2.0f,
-        countBox.x + BOX_WIDTH,
-        countBox.y + BOX_HEIGHT / 2.0f
-    );
-}
-
-void Renderer::drawDebugGrid() {
-    SDL_SetRenderDrawColor(renderer, 128, 128, 128, 64);
-
-    // Draw vertical grid lines
-    for (float x = 0.0f; x < static_cast<float>(SimConstants::WINDOW_WIDTH); x += 50.0f) {
-        SDL_RenderLine(renderer,
-            static_cast<int>(x), 0,
-            static_cast<int>(x), SimConstants::WINDOW_HEIGHT
-        );
-    }
-
-    // Draw horizontal grid lines
-    for (float y = 0.0f; y < static_cast<float>(SimConstants::WINDOW_HEIGHT); y += 50.0f) {
-        SDL_RenderLine(renderer,
-            0, static_cast<int>(y),
-            SimConstants::WINDOW_WIDTH, static_cast<int>(y)
-        );
-    }
-}
-
-SDL_FPoint Renderer::rotatePoint(float x, float y, float cx, float cy, float angle) {
-    // First, translate point back to origin by subtracting center coordinates
-    float translatedX = x - cx;
-    float translatedY = y - cy;
-
-    // Perform the rotation using the rotation matrix:
-    // | cos(θ) -sin(θ) |
-    // | sin(θ)  cos(θ) |
-    float rotatedX = translatedX * cosf(angle) - translatedY * sinf(angle);
-    float rotatedY = translatedX * sinf(angle) + translatedY * cosf(angle);
-
-    // Translate back to original position by adding center coordinates
-    SDL_FPoint result = {
-        rotatedX + cx,
-        rotatedY + cy
-    };
-
-    return result;
-}
-
-float Renderer::calculateTurningAngle(float targetX, float targetY, float currentX, float currentY) const {
-    float dx = targetX - currentX;
-    float dy = targetY - currentY;
-    return std::atan2f(dy, dx);
-}
-
-SDL_Color Renderer::getLaneColor(LaneId laneId, bool isActive) const {
-    if (isActive) {
-        if (laneId == LaneId::AL2_PRIORITY) {
-            return {255, 165, 0, 255}; // Orange for active priority lane
-        }
-        return {0, 255, 0, 255}; // Green for active normal lanes
-    }
-
-    if (laneId == LaneId::AL2_PRIORITY) {
-        return {255, 165, 0, 128}; // Semi-transparent orange for inactive priority lane
-    }
-    return {255, 255, 255, 128}; // Semi-transparent white for inactive normal lanes
-}
-
-void Renderer::updateWindowSize(int width, int height) {
-    // Resize the window if needed
-    if (window) {
-        SDL_SetWindowSize(window, width, height);
-    }
+void Renderer::setTrafficManager(TrafficManager* manager) {
+    trafficManager = manager;
 }

@@ -1,109 +1,198 @@
-// src/visualization/DebugOverlay.cpp
-#include <cmath>
 #include "visualization/DebugOverlay.h"
+#include "managers/TrafficManager.h"
+#include "core/TrafficLight.h"
+#include "utils/DebugLogger.h"
+#include "core/Constants.h"
 
-void DebugOverlay::render(SDL_Renderer* renderer, const TrafficManager& trafficManager) {
-    // Draw background for debug panel
-    SDL_FRect debugPanel = {10.0f, 10.0f, 200.0f, 300.0f};
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200);
-    SDL_RenderFillRect(renderer, &debugPanel);
+#include <sstream>
 
-    // Priority mode indicator
-    if (trafficManager.isInPriorityMode()) {
-        SDL_FRect priorityIndicator = {20.0f, 20.0f, 20.0f, 20.0f};
-        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &priorityIndicator);
+DebugOverlay::DebugOverlay()
+    : visible(true),
+      trafficManager(nullptr) {}
+
+DebugOverlay::~DebugOverlay() {}
+
+void DebugOverlay::initialize(TrafficManager* manager) {
+    trafficManager = manager;
+    DebugLogger::log("Debug overlay initialized");
+}
+
+void DebugOverlay::update() {
+    // Update overlay data if needed
+}
+
+void DebugOverlay::render(SDL_Renderer* renderer) {
+    if (!visible || !trafficManager) {
+        return;
     }
 
-    // Queue lengths visualization
-    int yOffset = 50;
-    for (const auto& lane : trafficManager.getLanes()) {
-        SDL_FRect queueBar = {
-            20.0f,
-            static_cast<float>(yOffset),
-            static_cast<float>(lane->getQueueSize() * 5),
-            15.0f
-        };
+    // Draw semi-transparent background
+    // Using Constants directly for SDL3
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 128);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_FRect overlayRect = {10, 10, 280, 220};
+    SDL_RenderFillRect(renderer, &overlayRect);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
-        // Color based on lane type
-        if (lane->isPriorityLane()) {
-            SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
-        } else if (lane->getId() == LaneId::AL3_FREELANE ||
-                   lane->getId() == LaneId::BL3_FREELANE ||
-                   lane->getId() == LaneId::CL3_FREELANE ||
-                   lane->getId() == LaneId::DL3_FREELANE) {
-            SDL_SetRenderDrawColor(renderer, 100, 255, 100, 255);
-        } else {
-            SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255);
+    // Render overlay sections
+    renderVehicleCounts(renderer);
+    renderTrafficLightState(renderer);
+    renderPriorityInfo(renderer);
+    renderMessages(renderer);
+}
+
+void DebugOverlay::toggleVisibility() {
+    visible = !visible;
+    DebugLogger::log("Debug overlay visibility set to " + std::string(visible ? "visible" : "hidden"));
+}
+
+bool DebugOverlay::isVisible() const {
+    return visible;
+}
+
+void DebugOverlay::addMessage(const std::string& message) {
+    messages.push_back(message);
+
+    // Keep only the latest 5 messages
+    if (messages.size() > 5) {
+        messages.erase(messages.begin());
+    }
+}
+
+void DebugOverlay::clearMessages() {
+    messages.clear();
+}
+
+void DebugOverlay::renderVehicleCounts(SDL_Renderer* renderer) {
+    if (!trafficManager) {
+        return;
+    }
+
+    const std::vector<Lane*>& lanes = trafficManager->getLanes();
+    int totalVehicles = 0;
+    int y = 20;
+
+    // Define text color for SDL3
+    SDL_Color debugTextColor = {255, 255, 255, 255};
+    SDL_Color priorityColor = {255, 165, 0, 255};
+
+    renderText(renderer, "Lane Statistics:", 20, y, debugTextColor);
+    y += 20;
+
+    for (Lane* lane : lanes) {
+        if (!lane) {
+            continue;
         }
 
-        SDL_RenderFillRect(renderer, &queueBar);
-        yOffset += 20;
-    }
-}
+        int count = lane->getVehicleCount();
+        totalVehicles += count;
 
-void DebugOverlay::updateStatistics(const TrafficManager& trafficManager) {
-    for (const auto& lane : trafficManager.getLanes()) {
-        LaneStatistics& laneStat = stats[lane->getId()];
-        laneStat.vehicleCount = static_cast<int>(lane->getQueueSize());
-    }
-}
+        std::stringstream ss;
+        ss << lane->getName() << ": " << count << " vehicles";
 
-void DebugOverlay::renderQueueStats(SDL_Renderer* renderer, int x, int y) {
-    int yOffset = y;
-    for (const auto& [laneId, stat] : stats) {
-        SDL_FRect bar = {
-            static_cast<float>(x + 10),
-            static_cast<float>(yOffset),
-            static_cast<float>(stat.vehicleCount * 5),
-            15.0f
-        };
-
-        if (stat.vehicleCount > 10) {
-            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        } else if (stat.vehicleCount > 5) {
-            SDL_SetRenderDrawColor(renderer, 255, 165, 0, 255);
+        if (trafficManager->isLanePrioritized(lane->getLaneId(), lane->getLaneNumber())) {
+            ss << " (PRIORITY)";
+            renderText(renderer, ss.str(), 20, y, priorityColor);
         } else {
-            SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+            renderText(renderer, ss.str(), 20, y, debugTextColor);
         }
 
-        SDL_RenderFillRect(renderer, &bar);
-        yOffset += 20;
+        y += 15;
+    }
+
+    std::stringstream ss;
+    ss << "Total Vehicles: " << totalVehicles;
+    renderText(renderer, ss.str(), 20, y, debugTextColor);
+}
+
+void DebugOverlay::renderTrafficLightState(SDL_Renderer* renderer) {
+    if (!trafficManager) {
+        return;
+    }
+
+    TrafficLight* light = trafficManager->getTrafficLight();
+    if (!light) {
+        return;
+    }
+
+    std::string stateStr;
+    SDL_Color stateColor;
+
+    // Define colors for SDL3
+    SDL_Color redColor = {255, 0, 0, 255};
+    SDL_Color greenColor = {11, 156, 50, 255};
+
+    switch (light->getCurrentState()) {
+        case TrafficLight::State::ALL_RED:
+            stateStr = "All Red";
+            stateColor = redColor;
+            break;
+        case TrafficLight::State::A_GREEN:
+            stateStr = "A Green";
+            stateColor = greenColor;
+            break;
+        case TrafficLight::State::B_GREEN:
+            stateStr = "B Green";
+            stateColor = greenColor;
+            break;
+        case TrafficLight::State::C_GREEN:
+            stateStr = "C Green";
+            stateColor = greenColor;
+            break;
+        case TrafficLight::State::D_GREEN:
+            stateStr = "D Green";
+            stateColor = greenColor;
+            break;
+    }
+
+    renderText(renderer, "Traffic Light: " + stateStr, 20, 160, stateColor);
+}
+
+void DebugOverlay::renderPriorityInfo(SDL_Renderer* renderer) {
+    if (!trafficManager) {
+        return;
+    }
+
+    // Define colors for SDL3
+    SDL_Color debugTextColor = {255, 255, 255, 255};
+    SDL_Color priorityColor = {255, 165, 0, 255};
+
+    Lane* priorityLane = trafficManager->getPriorityLane();
+    if (priorityLane && priorityLane->getVehicleCount() > 10) {
+        std::stringstream ss;
+        ss << "PRIORITY MODE ACTIVE: AL2 has " << priorityLane->getVehicleCount() << " vehicles";
+        renderText(renderer, ss.str(), 20, 180, priorityColor);
+    } else if (priorityLane) {
+        std::stringstream ss;
+        ss << "Priority threshold: " << priorityLane->getVehicleCount() << "/10";
+        renderText(renderer, ss.str(), 20, 180, debugTextColor);
     }
 }
 
-void DebugOverlay::renderLaneLoadIndicator(SDL_Renderer* renderer, int x, int y) {
-    const float RADIUS = 50.0f;
-    const int SEGMENTS = 12;
-    const float TWO_PI = static_cast<float>(2.0 * M_PI);
+void DebugOverlay::renderMessages(SDL_Renderer* renderer) {
+    // Define text color for SDL3
+    SDL_Color debugTextColor = {255, 255, 255, 255};
 
-    for (int i = 0; i < SEGMENTS; i++) {
-        float startAngle = (TWO_PI * i) / SEGMENTS;
-        float endAngle = (TWO_PI * (i + 1)) / SEGMENTS;
+    int y = 200;
 
-        float startX = x + RADIUS * cosf(startAngle);
-        float startY = y + RADIUS * sinf(startAngle);
-        float endX = x + RADIUS * cosf(endAngle);
-        float endY = y + RADIUS * sinf(endAngle);
+    renderText(renderer, "Recent Events:", 20, y, debugTextColor);
+    y += 20;
 
-        // Color based on load
-        int laneIndex = i % 4;
-        LaneId laneId = static_cast<LaneId>(laneIndex);
-        int load = stats[laneId].vehicleCount;
-
-        if (load > 10) {
-            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        } else if (load > 5) {
-            SDL_SetRenderDrawColor(renderer, 255, 165, 0, 255);
-        } else {
-            SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-        }
-
-        SDL_RenderLine(renderer, startX, startY, endX, endY);
+    for (const auto& message : messages) {
+        renderText(renderer, "- " + message, 25, y, debugTextColor);
+        y += 15;
     }
 }
 
-void DebugOverlay::renderSystemStatus(SDL_Renderer* renderer, int x, int y) {
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    // TODO: Add text rendering for system status when needed
+void DebugOverlay::renderText(SDL_Renderer* renderer, const std::string& text, int x, int y, SDL_Color color) {
+    // Since we don't have SDL_ttf configured, we'll draw a colored rectangle
+    // to indicate text position
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    SDL_FRect textRect = {static_cast<float>(x), static_cast<float>(y),
+                          static_cast<float>(text.length() * 7), 12};
+
+    // SDL3 uses SDL_RenderRect instead of SDL_RenderDrawRect
+    SDL_RenderRect(renderer, &textRect);
+
+    // In a full implementation with SDL_ttf, this would render the actual text
 }

@@ -1,436 +1,283 @@
-// src/core/Vehicle.cpp
 #include "core/Vehicle.h"
+#include "utils/DebugLogger.h"
 #include <sstream>
-#include <iomanip>
 #include <cmath>
 #include <algorithm>
 
-// Add this to the Vehicle constructor:
-Vehicle::Vehicle(uint32_t vehicleId, Direction dir, LaneId lane, bool emergency)
-    : id(vehicleId)
-    , direction(dir)
-    , currentLane(lane)
-    , targetLane(lane)
-    , waitTime(0.0f)
-    , isProcessing(false)
-    , turnProgress(0.0f)
-    , hasStartedTurn(false)
-    , speed(0.0f)
-    , position(0.0f)
-    , entryTime(std::chrono::steady_clock::now())
-    , isEmergency(emergency)
-    , turning(false)
-{
-    // Initialize position parameters
-    pos.x = 0.0f;
-    pos.y = 0.0f;
-    pos.angle = 0.0f;
-    pos.targetX = 0.0f;
-    pos.targetY = 0.0f;
-    pos.targetAngle = 0.0f;
-    pos.turnPosX = 0.0f;
-    pos.turnPosY = 0.0f;
-    pos.turnCenter_x = 0.0f;
-    pos.turnCenter_y = 0.0f;
-    pos.startAngle = 0.0f;
-    pos.endAngle = 0.0f;
-    pos.turnRadius = 0.0f;
+Vehicle::Vehicle(const std::string& id, char lane, int laneNumber, bool isEmergency)
+    : id(id.empty() ? "V_unknown" : id),
+      lane(lane),
+      laneNumber(std::clamp(laneNumber, 1, 3)),  // Ensure lane number is between 1-3
+      isEmergency(isEmergency),
+      arrivalTime(std::time(nullptr)),
+      animPos(0.0f),
+      turning(false),
+      turnProgress(0.0f),
+      turnPosX(0.0f),
+      turnPosY(0.0f) {
 
-    // Set initial position based on lane
-    initializePosition();
+    // Initialize animation position based on lane
+    if (lane == 'A') {
+        animPos = 0.0f; // Top of screen
+    } else if (lane == 'B') {
+        animPos = 800.0f; // Bottom of screen (assuming 800 height)
+    } else if (lane == 'C') {
+        animPos = 800.0f; // Right of screen (assuming 800 width)
+    } else if (lane == 'D') {
+        animPos = 0.0f; // Left of screen
+    } else {
+        // Invalid lane, default to A
+        this->lane = 'A';
+        animPos = 0.0f;
+        DebugLogger::log("Invalid lane provided: " + std::string(1, lane) + ", defaulting to A", DebugLogger::LogLevel::WARNING);
+    }
+
+    std::stringstream ss;
+    ss << "Created vehicle " << id << " on lane " << this->lane << this->laneNumber
+       << (isEmergency ? " (Emergency)" : "");
+    DebugLogger::log(ss.str());
 }
 
-void Vehicle::setProcessing(bool processing) {
-    isProcessing = processing;
-    if (processing) {
-        speed = SimConstants::VEHICLE_BASE_SPEED;
+Vehicle::~Vehicle() {}
+
+std::string Vehicle::getId() const {
+    return id;
+}
+
+char Vehicle::getLane() const {
+    return lane;
+}
+
+void Vehicle::setLane(char newLane) {
+    if (newLane >= 'A' && newLane <= 'D') {
+        lane = newLane;
+    } else {
+        DebugLogger::log("Attempt to set invalid lane: " + std::string(1, newLane), DebugLogger::LogLevel::WARNING);
     }
 }
 
-void Vehicle::updateWaitTime(float delta) {
-    if (!isProcessing) {
-        waitTime += delta;
+int Vehicle::getLaneNumber() const {
+    return laneNumber;
+}
+
+void Vehicle::setLaneNumber(int number) {
+    if (number >= 1 && number <= 3) {
+        laneNumber = number;
+    } else {
+        DebugLogger::log("Attempt to set invalid lane number: " + std::to_string(number), DebugLogger::LogLevel::WARNING);
     }
 }
 
-void Vehicle::updateTurnProgress(float delta) {
-    if (hasStartedTurn && turnProgress < 1.0f) {
-        turnProgress = std::min(1.0f, turnProgress + delta * SimConstants::TURN_SPEED);
+bool Vehicle::isEmergencyVehicle() const {
+    return isEmergency;
+}
+
+time_t Vehicle::getArrivalTime() const {
+    return arrivalTime;
+}
+
+float Vehicle::getAnimationPos() const {
+    return animPos;
+}
+
+void Vehicle::setAnimationPos(float pos) {
+    animPos = pos;
+}
+
+bool Vehicle::isTurning() const {
+    return turning;
+}
+
+void Vehicle::setTurning(bool isTurning) {
+    turning = isTurning;
+}
+
+float Vehicle::getTurnProgress() const {
+    return turnProgress;
+}
+
+void Vehicle::setTurnProgress(float progress) {
+    turnProgress = std::clamp(progress, 0.0f, 1.0f);  // Ensure progress is between 0-1
+}
+
+float Vehicle::getTurnPosX() const {
+    return turnPosX;
+}
+
+void Vehicle::setTurnPosX(float x) {
+    turnPosX = x;
+}
+
+float Vehicle::getTurnPosY() const {
+    return turnPosY;
+}
+
+void Vehicle::setTurnPosY(float y) {
+    turnPosY = y;
+}
+
+void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
+    // Guard against numerical issues with delta (if it's extremely large)
+    if (delta > 1000) {
+        delta = 1000;  // Cap to a reasonable maximum value
     }
-}
 
-void Vehicle::startTurn() {
-    hasStartedTurn = true;
-    turning = true;
-    turnProgress = 0.0f;
-    speed = SimConstants::VEHICLE_TURN_SPEED;
-}
-
-
-void Vehicle::setupTurn(float centerX, float centerY, float radius, float startAng, float endAng) {
-    pos.turnCenter_x = centerX;
-    pos.turnCenter_y = centerY;
-    pos.turnRadius = radius;
-    pos.startAngle = startAng;
-    pos.endAngle = endAng;
-    pos.turnPosX = pos.x;
-    pos.turnPosY = pos.y;
-}
-
-
-void Vehicle::calculateNewTargetPosition() {
-    using namespace SimConstants;
-
-    // Similar to initializePosition but set targets for where to go after a turn
-    int roadGroup = static_cast<int>(currentLane) / 3;
-    int laneInRoad = static_cast<int>(currentLane) % 3;
-    float laneOffset = (laneInRoad - 1) * LANE_WIDTH;
-
-    switch (roadGroup) {
-        case 0: // Road A - heading East
-            pos.targetX = WINDOW_WIDTH;
-            pos.targetY = CENTER_Y + laneOffset;
-            pos.targetAngle = 0.0f;
-            break;
-        case 1: // Road B - heading South
-            pos.targetX = CENTER_X + laneOffset;
-            pos.targetY = WINDOW_HEIGHT;
-            pos.targetAngle = M_PI/2.0f;
-            break;
-        case 2: // Road C - heading West
-            pos.targetX = 0.0f;
-            pos.targetY = CENTER_Y - laneOffset;
-            pos.targetAngle = M_PI;
-            break;
-        case 3: // Road D - heading North
-            pos.targetX = CENTER_X - laneOffset;
-            pos.targetY = 0.0f;
-            pos.targetAngle = -M_PI/2.0f;
-            break;
-    }
-}
-
-// Improve turn mechanics:
-void Vehicle::updateTurn(float deltaTime) {
-    if (!turning) return;
-
-    // Calculate easedProgress for smoother turns
-    turnProgress = std::min(1.0f, turnProgress + deltaTime * SimConstants::TURN_SPEED);
-    float easedProgress = turnProgress * turnProgress * (3.0f - 2.0f * turnProgress);
-
-    // Calculate current angle along the turn
-    float currentAngle = pos.startAngle + (pos.endAngle - pos.startAngle) * easedProgress;
-
-    // Calculate new position along the turn
-    pos.turnPosX = pos.turnCenter_x + pos.turnRadius * cosf(currentAngle);
-    pos.turnPosY = pos.turnCenter_y + pos.turnRadius * sinf(currentAngle);
-
-    // Update position
-    pos.x = pos.turnPosX;
-    pos.y = pos.turnPosY;
-
-    // Update angle to face tangent to circle
-    pos.angle = currentAngle + static_cast<float>(M_PI)/2.0f;
-
-    // Check if turn is complete
-    if (turnProgress >= 1.0f) {
-        turning = false;
-        currentLane = targetLane;  // Update lane after completing turn
-
-        // Set new target position based on new lane
-        calculateNewTargetPosition();
-    }
-}
-
-void Vehicle::setTurnPosition(float x, float y) {
-    pos.turnPosX = x;
-    pos.turnPosY = y;
-}
-
-void Vehicle::setSpeed(float newSpeed) {
-    speed = newSpeed;
-}
-
-void Vehicle::setPosition(float newPos) {
-    position = newPos;
-}
-
-void Vehicle::setTargetPosition(float x, float y, float angle) {
-    pos.targetX = x;
-    pos.targetY = y;
-    pos.targetAngle = angle;
-}
-
-void Vehicle::updateMovement(float deltaTime) {
-    if (!isProcessing) return;
-
+    // If the vehicle is turning, update turn progress
     if (turning) {
-        updateTurn(deltaTime);
+        turnProgress += delta * TURN_SPEED;
+
+        // Cap turn progress at 1.0
+        if (turnProgress > 1.0f) {
+            turnProgress = 1.0f;
+        }
+
+        // If turn is complete, reset turning state
+        if (turnProgress >= 1.0f) {
+            turning = false;
+            turnProgress = 0.0f;
+
+            // Update lane and position based on turn destination
+            // This would be handled by the TrafficManager in the complete implementation
+        }
+
+        return; // Skip normal movement while turning
+    }
+
+    // Normal movement logic
+    float moveDistance = MOVE_SPEED * delta;
+
+    // Vehicle movement depends on lane and traffic light
+    if (lane == 'A') {
+        // Moving down from top
+        if (isGreenLight || animPos > 400) { // Past the intersection or green light
+            animPos += moveDistance;
+        } else {
+            // Approaching red light, stop at intersection
+            float stopPos = 280; // Stop position for lane A
+            if (animPos < stopPos) {
+                animPos = std::min(animPos + moveDistance, stopPos);
+            }
+        }
+    } else if (lane == 'B') {
+        // Moving up from bottom
+        if (isGreenLight || animPos < 400) { // Past the intersection or green light
+            animPos -= moveDistance;
+        } else {
+            // Approaching red light, stop at intersection
+            float stopPos = 520; // Stop position for lane B
+            if (animPos > stopPos) {
+                animPos = std::max(animPos - moveDistance, stopPos);
+            }
+        }
+    } else if (lane == 'C') {
+        // Moving left from right
+        if (isGreenLight || animPos < 400) { // Past the intersection or green light
+            animPos -= moveDistance;
+        } else {
+            // Approaching red light, stop at intersection
+            float stopPos = 520; // Stop position for lane C
+            if (animPos > stopPos) {
+                animPos = std::max(animPos - moveDistance, stopPos);
+            }
+        }
+    } else if (lane == 'D') {
+        // Moving right from left
+        if (isGreenLight || animPos > 400) { // Past the intersection or green light
+            animPos += moveDistance;
+        } else {
+            // Approaching red light, stop at intersection
+            float stopPos = 280; // Stop position for lane D
+            if (animPos < stopPos) {
+                animPos = std::min(animPos + moveDistance, stopPos);
+            }
+        }
+    }
+}
+
+void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int queuePos) {
+    if (!renderer) {
+        DebugLogger::log("Renderer is null in Vehicle::render", DebugLogger::LogLevel::ERROR);
         return;
     }
 
-    // Calculate distance to target
-    float dx = pos.targetX - pos.x;
-    float dy = pos.targetY - pos.y;
-    float distance = std::sqrt(dx * dx + dy * dy);
+    int x = 0, y = 0;
+    int w = static_cast<int>(VEHICLE_LENGTH);
+    int h = static_cast<int>(VEHICLE_WIDTH);
 
-    // Update position if not at target
-    if (distance > 0.1f) {
-        float moveSpeed = speed * deltaTime;
-        float moveRatio = std::min(1.0f, moveSpeed / distance);
-
-        pos.x += dx * moveRatio;
-        pos.y += dy * moveRatio;
-
-        // Update angle smoothly
-        float targetAngle = std::atan2f(dy, dx);
-        float angleDiff = targetAngle - pos.angle;
-
-        // Normalize angle to [-π, π]
-        while (angleDiff > static_cast<float>(M_PI)) {
-            angleDiff -= 2.0f * static_cast<float>(M_PI);
-        }
-        while (angleDiff < -static_cast<float>(M_PI)) {
-            angleDiff += 2.0f * static_cast<float>(M_PI);
-        }
-
-        pos.angle += angleDiff * 0.1f; // Smooth angle change
-    }
-}
-
-bool Vehicle::hasReachedTarget() const {
-    float dx = pos.targetX - pos.x;
-    float dy = pos.targetY - pos.y;
-    return std::sqrt(dx * dx + dy * dy) < 0.1f;
-}
-
-float Vehicle::calculateTurnRadius() const {
-    switch (direction) {
-        case Direction::LEFT:
-            return SimConstants::TURN_GUIDE_RADIUS * 1.2f;
-        case Direction::RIGHT:
-            return SimConstants::TURN_GUIDE_RADIUS * 0.8f;
-        default:
-            return SimConstants::TURN_GUIDE_RADIUS;
-    }
-}
-
-void Vehicle::calculateTurnParameters(float roadWidth, float laneWidth, float centerX, float centerY) {
-    int quadrant = static_cast<int>(currentLane) / 3; // 0-3 for W,N,E,S
-    bool isLeftTurn = direction == Direction::LEFT;
-    bool isRightTurn = direction == Direction::RIGHT;
-    float turnOffset = roadWidth * 0.25f;
-    float turnRadius = SimConstants::TURN_GUIDE_RADIUS;
-
-    // Adjust radius based on turn direction
-    if (isLeftTurn) turnRadius *= 1.2f;
-    if (isRightTurn) turnRadius *= 0.8f;
-
-    // Set turn center and angle based on approach direction and turn type
-    switch (quadrant) {
-        case 0: // From West (A road)
-            if (isLeftTurn) {
-                setupTurn(
-                    centerX - roadWidth/2.0f + turnOffset,
-                    centerY - roadWidth/2.0f - turnOffset,
-                    turnRadius,
-                    0.0f,
-                    -static_cast<float>(M_PI)/2.0f
-                );
-            } else if (isRightTurn) {
-                setupTurn(
-                    centerX - roadWidth/2.0f + turnOffset,
-                    centerY + roadWidth/2.0f + turnOffset,
-                    turnRadius,
-                    0.0f,
-                    static_cast<float>(M_PI)/2.0f
-                );
-            }
-            break;
-
-        case 1: // From North (B road)
-            if (isLeftTurn) {
-                setupTurn(
-                    centerX + roadWidth/2.0f + turnOffset,
-                    centerY - roadWidth/2.0f + turnOffset,
-                    turnRadius,
-                    static_cast<float>(M_PI)/2.0f,
-                    0.0f
-                );
-            } else if (isRightTurn) {
-                setupTurn(
-                    centerX - roadWidth/2.0f - turnOffset,
-                    centerY - roadWidth/2.0f + turnOffset,
-                    turnRadius,
-                    static_cast<float>(M_PI)/2.0f,
-                    static_cast<float>(M_PI)
-                );
-            }
-            break;
-
-        case 2: // From East (C road)
-            if (isLeftTurn) {
-                setupTurn(
-                    centerX + roadWidth/2.0f - turnOffset,
-                    centerY + roadWidth/2.0f + turnOffset,
-                    turnRadius,
-                    static_cast<float>(M_PI),
-                    static_cast<float>(M_PI)/2.0f
-                );
-            } else if (isRightTurn) {
-                setupTurn(
-                    centerX + roadWidth/2.0f - turnOffset,
-                    centerY - roadWidth/2.0f - turnOffset,
-                    turnRadius,
-                    static_cast<float>(M_PI),
-                    -static_cast<float>(M_PI)/2.0f
-                );
-            }
-            break;
-
-        case 3: // From South (D road)
-            if (isLeftTurn) {
-                setupTurn(
-                    centerX - roadWidth/2.0f - turnOffset,
-                    centerY + roadWidth/2.0f - turnOffset,
-                    turnRadius,
-                    -static_cast<float>(M_PI)/2.0f,
-                    static_cast<float>(M_PI)
-                );
-            } else if (isRightTurn) {
-                setupTurn(
-                    centerX + roadWidth/2.0f + turnOffset,
-                    centerY + roadWidth/2.0f - turnOffset,
-                    turnRadius,
-                    -static_cast<float>(M_PI)/2.0f,
-                    0.0f
-                );
-            }
-            break;
-    }
-}
-
-// Initialize vehicle position based on lane
-void Vehicle::initializePosition() {
-    using namespace SimConstants;
-
-    // Get base lane information
-    int roadGroup = static_cast<int>(currentLane) / 3;  // 0=A, 1=B, 2=C, 3=D
-    int laneInRoad = static_cast<int>(currentLane) % 3; // Lane position in road
-
-    // Determine spawn position and angle based on road/lane
-    float laneOffset = (laneInRoad - 1) * LANE_WIDTH; // -LANE_WIDTH, 0, or +LANE_WIDTH
-
-    switch (roadGroup) {
-        case 0: // Road A (West)
-            pos.x = 0.0f;  // Left edge of screen
-            pos.y = CENTER_Y + laneOffset;
-            pos.angle = 0.0f;  // Facing right (East)
-            break;
-
-        case 1: // Road B (North)
-            pos.x = CENTER_X + laneOffset;
-            pos.y = 0.0f;  // Top edge of screen
-            pos.angle = M_PI/2.0f;  // Facing down (South)
-            break;
-
-        case 2: // Road C (East)
-            pos.x = WINDOW_WIDTH;  // Right edge of screen
-            pos.y = CENTER_Y - laneOffset;  // Note sign change for consistent lane order
-            pos.angle = M_PI;  // Facing left (West)
-            break;
-
-        case 3: // Road D (South)
-            pos.x = CENTER_X - laneOffset;  // Note sign change for consistent lane order
-            pos.y = WINDOW_HEIGHT;  // Bottom edge of screen
-            pos.angle = -M_PI/2.0f;  // Facing up (North)
-            break;
-    }
-
-    // Set initial target to same as current position
-    pos.targetX = pos.x;
-    pos.targetY = pos.y;
-    pos.targetAngle = pos.angle;
-
-    // Initialize animation position for queue
-    if (roadGroup == 0 || roadGroup == 2) {
-        // Horizontal roads (A and C) - use x for position
-        position = pos.x;
+    // Position the vehicle based on lane and animation position
+    if (turning) {
+        // Use turning coordinates if the vehicle is turning
+        x = static_cast<int>(turnPosX);
+        y = static_cast<int>(turnPosY);
     } else {
-        // Vertical roads (B and D) - use y for position
-        position = pos.y;
+        if (lane == 'A') {
+            // Road A (North to South)
+            int offsetX = (laneNumber == 1) ? -50 : (laneNumber == 3) ? 50 : 0;
+            x = 400 - w/2 + offsetX; // Center of lane
+            y = static_cast<int>(animPos);
+        } else if (lane == 'B') {
+            // Road B (South to North)
+            int offsetX = (laneNumber == 1) ? 50 : (laneNumber == 3) ? -50 : 0;
+            x = 400 - w/2 + offsetX;
+            y = static_cast<int>(animPos);
+        } else if (lane == 'C') {
+            // Road C (East to West)
+            int offsetY = (laneNumber == 1) ? -50 : (laneNumber == 3) ? 50 : 0;
+            x = static_cast<int>(animPos);
+            y = 400 - h/2 + offsetY;
+        } else if (lane == 'D') {
+            // Road D (West to East)
+            int offsetY = (laneNumber == 1) ? 50 : (laneNumber == 3) ? -50 : 0;
+            x = static_cast<int>(animPos);
+            y = 400 - h/2 + offsetY;
+        }
+    }
+
+    // Use the vehicle texture with appropriate rotation based on lane
+    if (vehicleTexture) {
+        SDL_FRect destRect = {static_cast<float>(x), static_cast<float>(y),
+                             static_cast<float>(w), static_cast<float>(h)};
+
+        // Set rotation angle based on lane
+        double angle = 0.0;
+        if (lane == 'A') angle = 180.0;       // Facing down
+        else if (lane == 'B') angle = 0.0;    // Facing up
+        else if (lane == 'C') angle = 90.0;   // Facing left
+        else if (lane == 'D') angle = 270.0;  // Facing right
+
+        // Set different color for emergency vehicles
+        if (isEmergency) {
+            SDL_SetTextureColorMod(vehicleTexture, 255, 0, 0); // Red tint for emergency
+        } else {
+            SDL_SetTextureColorMod(vehicleTexture, 255, 255, 255); // Normal color
+        }
+
+        // Render the vehicle
+        SDL_RenderTexture(renderer, vehicleTexture, nullptr, &destRect);
+    } else {
+        // Fallback to rectangle rendering if texture is unavailable
+        if (isEmergency) {
+            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255); // Red for emergency
+        } else {
+            SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255); // Blue for normal
+        }
+
+        SDL_FRect rect = {static_cast<float>(x), static_cast<float>(y),
+                         static_cast<float>(w), static_cast<float>(h)};
+        SDL_RenderFillRect(renderer, &rect);
     }
 }
 
+void Vehicle::calculateTurnPath(float startX, float startY, float controlX, float controlY,
+                              float endX, float endY, float progress) {
+    float t = easeInOutQuad(progress);
 
-float Vehicle::calculateLanePosition(LaneId lane, size_t queuePosition) {
-    using namespace SimConstants;
-    float baseOffset = QUEUE_START_OFFSET + queuePosition * QUEUE_SPACING;
-
-    switch (lane) {
-        case LaneId::AL1_INCOMING:
-        case LaneId::AL2_PRIORITY:
-        case LaneId::AL3_FREELANE:
-            return CENTER_X - baseOffset;
-
-        case LaneId::BL1_INCOMING:
-        case LaneId::BL2_NORMAL:
-        case LaneId::BL3_FREELANE:
-            return CENTER_Y - baseOffset;
-
-        case LaneId::CL1_INCOMING:
-        case LaneId::CL2_NORMAL:
-        case LaneId::CL3_FREELANE:
-            return CENTER_X + baseOffset;
-
-        case LaneId::DL1_INCOMING:
-        case LaneId::DL2_NORMAL:
-        case LaneId::DL3_FREELANE:
-            return CENTER_Y + baseOffset;
-
-        default:
-            return 0.0f;
-    }
+    // Quadratic Bezier curve calculation
+    turnPosX = (1-t)*(1-t)*startX + 2*(1-t)*t*controlX + t*t*endX;
+    turnPosY = (1-t)*(1-t)*startY + 2*(1-t)*t*controlY + t*t*endY;
 }
 
-float Vehicle::calculateTurnAngle(Direction dir, LaneId fromLane, LaneId) {
-    const float WEST_ANGLE = 0.0f;
-    const float NORTH_ANGLE = static_cast<float>(M_PI) / 2.0f;
-    const float EAST_ANGLE = static_cast<float>(M_PI);
-    const float SOUTH_ANGLE = -static_cast<float>(M_PI) / 2.0f;
-
-    // Get base angle from source lane
-    float baseAngle;
-    if (fromLane <= LaneId::AL3_FREELANE) baseAngle = WEST_ANGLE;
-    else if (fromLane <= LaneId::BL3_FREELANE) baseAngle = NORTH_ANGLE;
-    else if (fromLane <= LaneId::CL3_FREELANE) baseAngle = EAST_ANGLE;
-    else baseAngle = SOUTH_ANGLE;
-
-    // Adjust for turn direction
-    switch (dir) {
-        case Direction::LEFT:
-            return baseAngle - static_cast<float>(M_PI) / 2.0f;
-        case Direction::RIGHT:
-            return baseAngle + static_cast<float>(M_PI) / 2.0f;
-        default:
-            return baseAngle;
-    }
-}
-
-float Vehicle::getTimeInSystem() const {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration<float>(now - entryTime).count();
-}
-
-std::string Vehicle::toString() const {
-    std::stringstream ss;
-    ss << "Vehicle[ID:" << id
-       << ", Lane:" << static_cast<int>(currentLane)
-       << ", Dir:" << static_cast<int>(direction)
-       << ", Pos:(" << std::fixed << std::setprecision(1)
-       << pos.x << "," << pos.y << ")"
-       << ", Wait:" << std::setprecision(1) << waitTime << "s"
-       << ", Turn:" << (hasStartedTurn ? "Yes" : "No")
-       << ", Progress:" << std::setprecision(2) << turnProgress * 100 << "%]";
-    return ss.str();
+float Vehicle::easeInOutQuad(float t) const {
+    t = std::clamp(t, 0.0f, 1.0f);  // Ensure t is between 0-1
+    return t < 0.5f ? 2.0f * t * t : -1.0f + (4.0f - 2.0f * t) * t;
 }

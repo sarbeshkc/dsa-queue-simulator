@@ -1,122 +1,131 @@
-// include/utils/PriorityQueue.h with recursive mutex
-#pragma once
-#include "Queue.h"
+#ifndef PRIORITY_QUEUE_H
+#define PRIORITY_QUEUE_H
+
 #include <vector>
+#include <algorithm>
+#include <functional>
+#include <mutex>
 
-template <typename T>
-class PriorityQueue : public Queue<T> {
-private:
-  struct PriorityNode : public Queue<T>::Node {
-    int priority;
-    PriorityNode(const T &value, int p) : Queue<T>::Node(value), priority(p) {}
-  };
-
+// A simple priority queue implementation for the traffic simulation
+template<typename T>
+class PriorityQueue {
 public:
-  // Inheriting constructors
-  using Queue<T>::Queue;
+    // Element with priority
+    struct PriorityElement {
+        T element;
+        int priority;
 
-  // We need to explicitly delete copy constructor and assignment
-  PriorityQueue(const PriorityQueue&) = delete;
-  PriorityQueue& operator=(const PriorityQueue&) = delete;
+        // Constructor
+        PriorityElement(const T& e, int p) : element(e), priority(p) {}
 
-  // And explicitly define move constructor and assignment
-  PriorityQueue(PriorityQueue&& other) noexcept : Queue<T>(std::move(other)) {}
-
-  PriorityQueue& operator=(PriorityQueue&& other) noexcept {
-    Queue<T>::operator=(std::move(other));
-    return *this;
-  }
-
-  // Enqueue with priority - higher priority values are dequeued first
-  void enqueuePriority(const T &value, int priority) {
-    std::lock_guard<std::recursive_mutex> lock(this->mutex);
-
-    auto newNode = std::make_shared<PriorityNode>(value, priority);
-
-    if (this->isEmpty() ||
-        static_cast<PriorityNode *>(this->front.get())->priority < priority) {
-      newNode->next = this->front;
-      this->front = newNode;
-    } else {
-      auto current = this->front;
-      while (current->next &&
-             static_cast<PriorityNode *>(current->next.get())->priority >=
-                 priority) {
-        current = current->next;
-      }
-      newNode->next = current->next;
-      current->next = newNode;
-    }
-    this->size++;
-  }
-
-  // Get the priority of the first item (highest priority) without removing it
-  int peekPriority() const {
-    std::lock_guard<std::recursive_mutex> lock(this->mutex);
-
-    if (this->isEmpty()) {
-      throw std::runtime_error("Queue is empty");
-    }
-    return static_cast<PriorityNode *>(this->front.get())->priority;
-  }
-
-  // Get the priority of an item at a specific index
-  int getPriorityAt(size_t index) const {
-    std::lock_guard<std::recursive_mutex> lock(this->mutex);
-
-    if (index >= this->size) {
-      throw std::out_of_range("Index out of bounds");
-    }
-
-    auto current = this->front;
-    for (size_t i = 0; i < index; i++) {
-      current = current->next;
-    }
-    return static_cast<PriorityNode *>(current.get())->priority;
-  }
-
-  // Update the priority of an item that matches the given value
-  // Returns true if at least one item was updated
-  bool updatePriority(const T &value, int newPriority) {
-    std::lock_guard<std::recursive_mutex> lock(this->mutex);
-
-    if (this->isEmpty()) {
-      return false;
-    }
-
-    // Find and remove all matching items
-    std::vector<T> removedItems;
-    auto current = this->front;
-    auto prev = std::shared_ptr<typename Queue<T>::Node>(nullptr);
-
-    while (current) {
-      if (current->data == value) {
-        if (prev) {
-          prev->next = current->next;
-        } else {
-          this->front = current->next;
+        // Comparison operator for std::sort
+        bool operator<(const PriorityElement& other) const {
+            return priority < other.priority;
         }
 
-        if (current == this->rear) {
-          this->rear = prev;
+        bool operator>(const PriorityElement& other) const {
+            return priority > other.priority;
+        }
+    };
+
+    PriorityQueue() = default;
+    ~PriorityQueue() = default;
+
+    // Add element with priority
+    void enqueue(const T& element, int priority) {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        // Add element with priority
+        elements.push_back(PriorityElement(element, priority));
+
+        // Sort in descending order (higher priority first)
+        std::sort(elements.begin(), elements.end(), std::greater<PriorityElement>());
+    }
+
+    // Get the highest priority element
+    T dequeue() {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        if (elements.empty()) {
+            throw std::runtime_error("PriorityQueue is empty");
         }
 
-        removedItems.push_back(current->data);
-        this->size--;
+        // Get the highest priority element
+        T element = elements.front().element;
+        elements.erase(elements.begin());
 
-        auto next = current->next;
-        current = next;
-      } else {
-        prev = current;
-        current = current->next;
-      }
+        return element;
     }
 
-    // Re-add all removed items with the new priority
-    for (const auto& item : removedItems) {
-      enqueuePriority(item, newPriority);
+    // Peek at the highest priority element without removing it
+    T peek() const {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        if (elements.empty()) {
+            throw std::runtime_error("PriorityQueue is empty");
+        }
+
+        return elements.front().element;
     }
 
-    return !removedItems.empty();
-  }
+    // Update the priority of an element if it exists
+    bool updatePriority(const T& element, int newPriority, std::function<bool(const T&, const T&)> comparator) {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        // Find the element
+        auto it = std::find_if(elements.begin(), elements.end(),
+                             [&](const PriorityElement& pe) {
+                                 return comparator(pe.element, element);
+                             });
+
+        if (it != elements.end()) {
+            // Update the priority
+            it->priority = newPriority;
+
+            // Re-sort the elements
+            std::sort(elements.begin(), elements.end(), std::greater<PriorityElement>());
+
+            return true;
+        }
+
+        return false;
+    }
+
+    // Check if the queue is empty
+    bool isEmpty() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements.empty();
+    }
+
+    // Get the size of the queue
+    size_t size() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements.size();
+    }
+
+    // Clear the queue
+    void clear() {
+        std::lock_guard<std::mutex> lock(mutex);
+        elements.clear();
+    }
+
+    // Get all elements for iteration (e.g., for rendering)
+    std::vector<T> getAllElements() const {
+        std::lock_guard<std::mutex> lock(mutex);
+
+        std::vector<T> result;
+        result.reserve(elements.size());
+
+        for (const auto& pe : elements) {
+            result.push_back(pe.element);
+        }
+
+        return result;
+    }
+
+private:
+    std::vector<PriorityElement> elements;
+    mutable std::mutex mutex;
 };
+
+#endif // PRIORITY_QUEUE_H

@@ -1,129 +1,75 @@
-// include/utils/Queue.h with recursive mutex
-#pragma once
-#include <memory>
-#include <stdexcept>
-#include <mutex>
+#ifndef QUEUE_H
+#define QUEUE_H
 
+#include <vector>
+#include <mutex>
+#include <stdexcept>
+
+// A thread-safe queue implementation for the traffic simulation
 template<typename T>
 class Queue {
-protected:
-    struct Node {
-        T data;
-        std::shared_ptr<Node> next;
-        Node(const T& value) : data(value), next(nullptr) {}
-    };
-
-    std::shared_ptr<Node> front;
-    std::shared_ptr<Node> rear;
-    size_t size;
-    mutable std::recursive_mutex mutex; // Changed to recursive mutex to prevent deadlocks
-
 public:
-    Queue() : front(nullptr), rear(nullptr), size(0) {}
+    Queue() = default;
+    ~Queue() = default;
 
-    virtual ~Queue() = default;
-
-    // Delete copy constructor and assignment operator due to mutex
-    Queue(const Queue&) = delete;
-    Queue& operator=(const Queue&) = delete;
-
-    // Add move constructor and move assignment
-    Queue(Queue&& other) noexcept
-        : front(std::move(other.front)),
-          rear(std::move(other.rear)),
-          size(other.size) {
-        other.size = 0;
+    // Add element to the queue
+    void enqueue(const T& element) {
+        std::lock_guard<std::mutex> lock(mutex);
+        elements.push_back(element);
     }
 
-    Queue& operator=(Queue&& other) noexcept {
-        if (this != &other) {
-            front = std::move(other.front);
-            rear = std::move(other.rear);
-            size = other.size;
-            other.size = 0;
-        }
-        return *this;
-    }
-
-    void enqueue(const T& value) {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
-
-        auto newNode = std::make_shared<Node>(value);
-        if (isEmpty()) {
-            front = rear = newNode;
-        } else {
-            rear->next = newNode;
-            rear = newNode;
-        }
-        size++;
-    }
-
+    // Remove and return the front element
     T dequeue() {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
+        std::lock_guard<std::mutex> lock(mutex);
 
-        if (isEmpty()) {
+        if (elements.empty()) {
             throw std::runtime_error("Queue is empty");
         }
 
-        T value = front->data;
-        front = front->next;
-        size--;
+        T element = elements.front();
+        elements.erase(elements.begin());
 
-        if (isEmpty()) {
-            rear = nullptr;
-        }
-
-        return value;
+        return element;
     }
 
-    // Method that dequeues without locking (for internal use)
-    T dequeueUnlocked() {
-        if (isEmpty()) {
-            throw std::runtime_error("Queue is empty");
-        }
-
-        T value = front->data;
-        front = front->next;
-        size--;
-
-        if (isEmpty()) {
-            rear = nullptr;
-        }
-
-        return value;
-    }
-
-    bool isEmpty() const {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
-        return front == nullptr;
-    }
-
-    size_t getSize() const {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
-        return size;
-    }
-
+    // Peek at the front element without removing it
     T peek() const {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
+        std::lock_guard<std::mutex> lock(mutex);
 
-        if (isEmpty()) {
+        if (elements.empty()) {
             throw std::runtime_error("Queue is empty");
         }
-        return front->data;
+
+        return elements.front();
     }
 
-    // Add index-based peek
-    T peek(size_t index) const {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
-
-        if (size == 0 || index >= size) {
-            throw std::out_of_range("Index out of bounds");
-        }
-
-        auto current = front;
-        for (size_t i = 0; i < index; i++) {
-            current = current->next;
-        }
-        return current->data;
+    // Check if the queue is empty
+    bool isEmpty() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements.empty();
     }
+
+    // Get the size of the queue
+    size_t size() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements.size();
+    }
+
+    // Clear the queue
+    void clear() {
+        std::lock_guard<std::mutex> lock(mutex);
+        elements.clear();
+    }
+
+    // Get all elements for iteration (e.g., for rendering)
+    std::vector<T> getAllElements() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return elements;
+    }
+
+private:
+    std::vector<T> elements;
+    mutable std::mutex mutex;
 };
+
+#endif // QUEUE_H

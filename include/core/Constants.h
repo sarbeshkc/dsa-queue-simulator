@@ -1,90 +1,60 @@
-// include/core/Constants.h
-#pragma once
-#include <cstdint>
-#include <cmath>
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
 
-enum class LaneId {
-    AL1_INCOMING,
-    AL2_PRIORITY,
-    AL3_FREELANE,
-    BL1_INCOMING,
-    BL2_NORMAL,
-    BL3_FREELANE,
-    CL1_INCOMING,
-    CL2_NORMAL,
-    CL3_FREELANE,
-    DL1_INCOMING,
-    DL2_NORMAL,
-    DL3_FREELANE
-};
+#include <string>
+#include <SDL3/SDL.h>
 
-enum class Direction {
-    STRAIGHT,
-    LEFT,
-    RIGHT
-};
+namespace Constants {
+    // Window settings
+    constexpr int WINDOW_WIDTH = 800;
+    constexpr int WINDOW_HEIGHT = 800;
+    const std::string WINDOW_TITLE = "Traffic Junction Simulator";
+    constexpr float SCALE = 1.1f;
 
-enum class LightState {
-    RED,
-    GREEN
-};
+    // Road settings
+    constexpr int ROAD_WIDTH = 150;
+    constexpr int LANE_WIDTH = 50;
+    constexpr int ARROW_SIZE = 15;
 
-namespace SimConstants {
-    // Queue and priority thresholds
-    static constexpr float VEHICLE_LENGTH = 50.0f;  // Length of vehicle for queue spacing
-    static constexpr size_t PRIORITY_THRESHOLD = 10;     // Switch to priority mode at 10 vehicles
-    static constexpr size_t NORMAL_THRESHOLD = 5;        // Return to normal mode at 5 vehicles
+    // Vehicle settings
+    constexpr int MAX_VEHICLE_ID = 20;
+    constexpr float VEHICLE_LENGTH = 20.0f;
+    constexpr float VEHICLE_WIDTH = 10.0f;
+    constexpr float VEHICLE_GAP = 15.0f;
+    constexpr float TURN_DURATION = 1500.0f;
+    constexpr float BEZIER_CONTROL_OFFSET = 80.0f;
+    constexpr float TURN_SPEED = 0.0008f;
+    constexpr float MOVE_SPEED = 0.2f;
 
-    // Window and Display
-    static constexpr int WINDOW_WIDTH = 1280;
-    static constexpr int WINDOW_HEIGHT = 960;
-    static constexpr int CENTER_X = WINDOW_WIDTH / 2;
-    static constexpr int CENTER_Y = WINDOW_HEIGHT / 2;
+    // Traffic light settings
+    constexpr int ALL_RED_DURATION = 2000; // 2 seconds
+    constexpr int GREEN_DURATION = 3000;   // 3 seconds
 
-    // Road and Lane Configuration
-    static constexpr int ROAD_WIDTH = 360;     // Width for 3 lanes
-    static constexpr int LANE_WIDTH = 120;     // Individual lane width
-    static constexpr float QUEUE_SPACING = 60.0f;
-    static constexpr float QUEUE_START_OFFSET = 200.0f;
-    static constexpr float QUEUE_START = ROAD_WIDTH / 2.0f + 50.0f;  // Where queues start from intersection
-    static constexpr float LANE_OFFSET = ROAD_WIDTH / 6.0f;  // Half of lane width
+    // Queue settings
+    constexpr int MAX_QUEUE_SIZE = 100;
 
-    // Vehicle Configuration
-    static constexpr float VEHICLE_WIDTH = 40.0f;
-    static constexpr float VEHICLE_HEIGHT = 30.0f;
-    static constexpr float VEHICLE_BASE_SPEED = 50.0f;
-    static constexpr float VEHICLE_TURN_SPEED = 30.0f;
-    static constexpr float VEHICLE_MIN_SPACING = 60.0f;
-    static constexpr float VEHICLE_ACCEL_RATE = 2.0f;
-    static constexpr float VEHICLE_DECEL_RATE = 4.0f;
+    // Priority settings
+    constexpr int PRIORITY_THRESHOLD_HIGH = 10; // Enter priority mode when > 10 vehicles
+    constexpr int PRIORITY_THRESHOLD_LOW = 5;   // Exit priority mode when < 5 vehicles
 
-    // Added for animation
-    static constexpr float TURN_SPEED = 0.5f;  // Speed at which turns progress
+    // File paths
+    const std::string DATA_PATH = "data/lanes";
+    const std::string LOG_FILE = "traffic_simulator.log";
+    const std::string VEHICLE_FILE = "vehicles.data";
+    const std::string FONT_PATH = "/usr/share/fonts/TTF/DejaVuSans.ttf";
+    const std::string CAR_TEXTURE_PATH = "assets/car.jpg";
 
-    // Traffic Light Configuration
-    static constexpr float LIGHT_SIZE = 40.0f;
-    static constexpr float LIGHT_SPACING = 60.0f;
+    // Colors
+    constexpr SDL_Color ROAD_COLOR = {50, 50, 50, 255};
+    constexpr SDL_Color LANE_MARKER_COLOR = {255, 255, 255, 255};
+    constexpr SDL_Color RED_LIGHT_COLOR = {255, 0, 0, 255};
+    constexpr SDL_Color GREEN_LIGHT_COLOR = {11, 156, 50, 255};
+    constexpr SDL_Color NORMAL_VEHICLE_COLOR = {0, 0, 255, 255};
+    constexpr SDL_Color EMERGENCY_VEHICLE_COLOR = {255, 0, 0, 255};
+    constexpr SDL_Color PRIORITY_INDICATOR_COLOR = {255, 165, 0, 255};
+    constexpr SDL_Color TEXT_COLOR = {0, 0, 0, 255};
+    constexpr SDL_Color DEBUG_TEXT_COLOR = {255, 255, 255, 255};
+    constexpr SDL_Color DEBUG_BACKGROUND_COLOR = {0, 0, 0, 128};
+}
 
-    // Intersection Configuration
-    static constexpr float INTERSECTION_RADIUS = 180.0f;
-    static constexpr float TURN_GUIDE_RADIUS = 150.0f;
-
-    // System Timing
-    static constexpr int FILE_CHECK_INTERVAL = 100;    // ms
-    static constexpr int TRAFFIC_UPDATE_INTERVAL = 50; // ms
-    static constexpr float VEHICLE_PROCESS_TIME = 3.0f; // seconds
-    static constexpr float TURN_ENTRY_DISTANCE = 100.0f;
-    static constexpr float TURN_EXIT_DISTANCE = 100.0f;
-
-    // Intersection Configuration
-    static constexpr float INTERSECTION_SIZE = 360.0f;
-    static constexpr float STOP_LINE_OFFSET = 20.0f;
-    static constexpr float CROSSWALK_WIDTH = 30.0f;
-    static constexpr float MAX_WAIT_TIME = 30.0f;
-    static constexpr float MIN_VEHICLE_SPACING = 60.0f;
-    static constexpr float MIN_STATE_TIME = 5.0f;        // Minimum time in any state
-    static constexpr float MAX_STATE_TIME = 30.0f;       // Maximum time in any state
-
-    // Frame rate control
-    static constexpr float UPDATE_INTERVAL = 0.016f;  // ~60 FPS
-};;
+#endif // CONSTANTS_H

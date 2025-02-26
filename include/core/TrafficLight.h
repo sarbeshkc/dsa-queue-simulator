@@ -1,43 +1,71 @@
-// include/core/TrafficLight.h
-#pragma once
-#include <SDL3/SDL.h>
-#include "Constants.h"
+#ifndef TRAFFIC_LIGHT_H
+#define TRAFFIC_LIGHT_H
+
 #include <cstdint>
+#include <vector>
+#include <string>
+#include <SDL3/SDL.h>
+#include "core/Lane.h"
 
 class TrafficLight {
-private:
-    LightState state;                // Current light state
-    LightState nextState;            // Next scheduled state
-    float transitionProgress;        // Progress of state transition (0-1)
-    float transitionDuration;        // Duration of transition animation
-    float stateTimer;                // Timer for current state
-    bool isTransitioning;            // Whether in transition between states
-    float currentStateDuration;      // Duration for current state
-    bool isPriorityMode;             // Whether in priority mode
-    bool isForced;                   // Whether state is being forced
-    LaneId controlledLane;           // The lane this light controls
-
-    // Private methods
-    void startTransition(LightState newState);
-    float getNextStateDuration() const;
-
 public:
-    TrafficLight(LaneId lane = LaneId::AL2_PRIORITY);  // Default to priority lane
+    enum class State {
+        ALL_RED = 0,
+        A_GREEN = 1,
+        B_GREEN = 2,
+        C_GREEN = 3,
+        D_GREEN = 4
+    };
 
-    // Core state management
-    void update(float deltaTime);
-    void setState(LightState newState);
-    LightState getState() const { return state; }
-    void forceState(LightState newState, bool force = true);
-    void setPriorityMode(bool enabled);
-    LaneId getControlledLane() const { return controlledLane; }
+    TrafficLight();
+    ~TrafficLight();
 
-    // State query methods
-    bool isInTransition() const { return isTransitioning; }
-    float getTransitionProgress() const { return transitionProgress; }
-    float getStateTimer() const { return stateTimer; }
-    float getStateDuration() const;
+    // Updates the traffic light state based on lane priorities
+    void update(const std::vector<Lane*>& lanes);
 
-    // Rendering
-    void render(SDL_Renderer* renderer, float x, float y) const;
+    // Renders the traffic lights
+    void render(SDL_Renderer* renderer);
+
+    // Returns the current traffic light state
+    State getCurrentState() const { return currentState; }
+
+    // Returns the next traffic light state
+    State getNextState() const { return nextState; }
+
+    // Sets the next traffic light state
+    void setNextState(State state);
+
+    // Checks if the specific lane gets green light
+    bool isGreen(char lane) const;
+
+private:
+    State currentState;
+    State nextState;
+
+    // Timing for the green and red states
+    const int allRedDuration = 2000; // 2 seconds for all red
+    const int greenDuration = 3000;  // 3 seconds for green
+
+    // Last state change time in milliseconds
+    uint32_t lastStateChangeTime;
+
+    // Priority mode flag
+    bool isPriorityMode;
+
+    // Track when normal mode should resume (after priority mode drops to 5 vehicles)
+    bool shouldResumeNormalMode;
+
+    // Calculate the appropriate next state considering priorities
+    State calculateNextState(const std::vector<Lane*>& lanes);
+
+    // Calculate duration based on vehicle count (|V| * t)
+    int calculateGreenDuration(int vehicleCount);
+
+    // Helper drawing functions
+    void drawLightForA(SDL_Renderer* renderer, bool isRed);
+    void drawLightForB(SDL_Renderer* renderer, bool isRed);
+    void drawLightForC(SDL_Renderer* renderer, bool isRed);
+    void drawLightForD(SDL_Renderer* renderer, bool isRed);
 };
+
+#endif // TRAFFIC_LIGHT_H;
