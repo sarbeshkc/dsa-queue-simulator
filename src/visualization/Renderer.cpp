@@ -10,6 +10,8 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <random>
+#include <chrono>
 
 Renderer::Renderer()
     : window(nullptr),
@@ -619,9 +621,9 @@ void Renderer::drawLaneMarker(int x, int y, const std::string& label, SDL_Color 
     // Create polygon points for hexagon
     SDL_FPoint hexPoints[HEX_SIDES + 1];
     for (int i = 0; i < HEX_SIDES; i++) {
-        float angle = 2.0f * M_PI * i / HEX_SIDES - M_PI/2.0f;
-        hexPoints[i].x = x + HEX_RADIUS * cos(angle);
-        hexPoints[i].y = y + HEX_RADIUS * sin(angle);
+        float angle = 2.0f * M_PI * static_cast<float>(i) / static_cast<float>(HEX_SIDES) - M_PI/2.0f;
+        hexPoints[i].x = static_cast<float>(x) + HEX_RADIUS * cosf(angle);
+        hexPoints[i].y = static_cast<float>(y) + HEX_RADIUS * sinf(angle);
     }
     // Close the polygon
     hexPoints[HEX_SIDES] = hexPoints[0];
@@ -629,12 +631,12 @@ void Renderer::drawLaneMarker(int x, int y, const std::string& label, SDL_Color 
     // Draw hexagon with glow effect
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 50); // Transparent glow
     for (int i = 1; i <= 5; i++) {
-        float scale = 1.0f + i * 0.08f;
+        float scale = 1.0f + static_cast<float>(i) * 0.08f;
         SDL_FPoint scaledPoints[HEX_SIDES + 1];
 
         for (int j = 0; j < HEX_SIDES + 1; j++) {
-            scaledPoints[j].x = x + (hexPoints[j].x - x) * scale;
-            scaledPoints[j].y = y + (hexPoints[j].y - y) * scale;
+            scaledPoints[j].x = static_cast<float>(x) + (hexPoints[j].x - static_cast<float>(x)) * scale;
+            scaledPoints[j].y = static_cast<float>(y) + (hexPoints[j].y - static_cast<float>(y)) * scale;
         }
 
         for (int j = 0; j < HEX_SIDES; j++) {
@@ -667,8 +669,8 @@ void Renderer::drawLaneMarker(int x, int y, const std::string& label, SDL_Color 
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 
     // Draw first character (A, B, C, or D)
-    float charX = x - 5;
-    float charY = y - 4;
+    float charX = static_cast<float>(x) - 5.0f;
+    float charY = static_cast<float>(y) - 4.0f;
 
     char firstChar = label[0];
     switch (firstChar) {
@@ -705,8 +707,8 @@ void Renderer::drawLaneMarker(int x, int y, const std::string& label, SDL_Color 
     }
 
     // Draw second character (1, 2, or 3)
-    charX = x + 1;
-    charY = y - 4;
+    charX = static_cast<float>(x) + 1.0f;
+    charY = static_cast<float>(y) - 4.0f;
 
     char secondChar = label[1];
     switch (secondChar) {
@@ -917,63 +919,63 @@ void Renderer::drawLaneFlowArrow(int x, int y, Direction dir) {
     switch (dir) {
         case Direction::UP:
             // Head
-            points[0] = {x, y - ARROW_SIZE};
-            points[1] = {x - ARROW_WIDTH, y - ARROW_SIZE/2};
-            points[2] = {x - ARROW_WIDTH/2, y - ARROW_SIZE/2};
+            points[0] = {static_cast<float>(x), static_cast<float>(y) - ARROW_SIZE};
+            points[1] = {static_cast<float>(x) - ARROW_WIDTH, static_cast<float>(y) - ARROW_SIZE/2};
+            points[2] = {static_cast<float>(x) - ARROW_WIDTH/2, static_cast<float>(y) - ARROW_SIZE/2};
             // Stem
-            points[3] = {x - ARROW_WIDTH/2, y + ARROW_SIZE/2};
-            points[4] = {x + ARROW_WIDTH/2, y + ARROW_SIZE/2};
+            points[3] = {static_cast<float>(x) - ARROW_WIDTH/2, static_cast<float>(y) + ARROW_SIZE/2};
+            points[4] = {static_cast<float>(x) + ARROW_WIDTH/2, static_cast<float>(y) + ARROW_SIZE/2};
             // Head right
-            points[5] = {x + ARROW_WIDTH/2, y - ARROW_SIZE/2};
-            points[6] = {x + ARROW_WIDTH, y - ARROW_SIZE/2};
+            points[5] = {static_cast<float>(x) + ARROW_WIDTH/2, static_cast<float>(y) - ARROW_SIZE/2};
+            points[6] = {static_cast<float>(x) + ARROW_WIDTH, static_cast<float>(y) - ARROW_SIZE/2};
             break;
         case Direction::DOWN:
             // Head
-            points[0] = {x, y + ARROW_SIZE};
-            points[1] = {x - ARROW_WIDTH, y + ARROW_SIZE/2};
-            points[2] = {x - ARROW_WIDTH/2, y + ARROW_SIZE/2};
+            points[0] = {static_cast<float>(x), static_cast<float>(y) + ARROW_SIZE};
+            points[1] = {static_cast<float>(x) - ARROW_WIDTH, static_cast<float>(y) + ARROW_SIZE/2};
+            points[2] = {static_cast<float>(x) - ARROW_WIDTH/2, static_cast<float>(y) + ARROW_SIZE/2};
             // Stem
-            points[3] = {x - ARROW_WIDTH/2, y - ARROW_SIZE/2};
-            points[4] = {x + ARROW_WIDTH/2, y - ARROW_SIZE/2};
+            points[3] = {static_cast<float>(x) - ARROW_WIDTH/2, static_cast<float>(y) - ARROW_SIZE/2};
+            points[4] = {static_cast<float>(x) + ARROW_WIDTH/2, static_cast<float>(y) - ARROW_SIZE/2};
             // Head right
-            points[5] = {x + ARROW_WIDTH/2, y + ARROW_SIZE/2};
-            points[6] = {x + ARROW_WIDTH, y + ARROW_SIZE/2};
+            points[5] = {static_cast<float>(x) + ARROW_WIDTH/2, static_cast<float>(y) + ARROW_SIZE/2};
+            points[6] = {static_cast<float>(x) + ARROW_WIDTH, static_cast<float>(y) + ARROW_SIZE/2};
             break;
         case Direction::LEFT:
             // Head
-            points[0] = {x - ARROW_SIZE, y};
-            points[1] = {x - ARROW_SIZE/2, y - ARROW_WIDTH};
-            points[2] = {x - ARROW_SIZE/2, y - ARROW_WIDTH/2};
+            points[0] = {static_cast<float>(x) - ARROW_SIZE, static_cast<float>(y)};
+            points[1] = {static_cast<float>(x) - ARROW_SIZE/2, static_cast<float>(y) - ARROW_WIDTH};
+            points[2] = {static_cast<float>(x) - ARROW_SIZE/2, static_cast<float>(y) - ARROW_WIDTH/2};
             // Stem
-            points[3] = {x + ARROW_SIZE/2, y - ARROW_WIDTH/2};
-            points[4] = {x + ARROW_SIZE/2, y + ARROW_WIDTH/2};
+            points[3] = {static_cast<float>(x) + ARROW_SIZE/2, static_cast<float>(y) - ARROW_WIDTH/2};
+            points[4] = {static_cast<float>(x) + ARROW_SIZE/2, static_cast<float>(y) + ARROW_WIDTH/2};
             // Head bottom
-            points[5] = {x - ARROW_SIZE/2, y + ARROW_WIDTH/2};
-            points[6] = {x - ARROW_SIZE/2, y + ARROW_WIDTH};
+            points[5] = {static_cast<float>(x) - ARROW_SIZE/2, static_cast<float>(y) + ARROW_WIDTH/2};
+            points[6] = {static_cast<float>(x) - ARROW_SIZE/2, static_cast<float>(y) + ARROW_WIDTH};
             break;
         case Direction::RIGHT:
             // Head
-            points[0] = {x + ARROW_SIZE, y};
-            points[1] = {x + ARROW_SIZE/2, y - ARROW_WIDTH};
-            points[2] = {x + ARROW_SIZE/2, y - ARROW_WIDTH/2};
+            points[0] = {static_cast<float>(x) + ARROW_SIZE, static_cast<float>(y)};
+            points[1] = {static_cast<float>(x) + ARROW_SIZE/2, static_cast<float>(y) - ARROW_WIDTH};
+            points[2] = {static_cast<float>(x) + ARROW_SIZE/2, static_cast<float>(y) - ARROW_WIDTH/2};
             // Stem
-            points[3] = {x - ARROW_SIZE/2, y - ARROW_WIDTH/2};
-            points[4] = {x - ARROW_SIZE/2, y + ARROW_WIDTH/2};
+            points[3] = {static_cast<float>(x) - ARROW_SIZE/2, static_cast<float>(y) - ARROW_WIDTH/2};
+            points[4] = {static_cast<float>(x) - ARROW_SIZE/2, static_cast<float>(y) + ARROW_WIDTH/2};
             // Head bottom
-            points[5] = {x + ARROW_SIZE/2, y + ARROW_WIDTH/2};
-            points[6] = {x + ARROW_SIZE/2, y + ARROW_WIDTH};
+            points[5] = {static_cast<float>(x) + ARROW_SIZE/2, static_cast<float>(y) + ARROW_WIDTH/2};
+            points[6] = {static_cast<float>(x) + ARROW_SIZE/2, static_cast<float>(y) + ARROW_WIDTH};
             break;
     }
 
     // Draw glow - slightly larger version of the arrow
     for (int i = 0; i < 7; i++) {
-        float scaledX = x + (points[i].x - x) * 1.2f;
-        float scaledY = y + (points[i].y - y) * 1.2f;
+        float scaledX = static_cast<float>(x) + (points[i].x - static_cast<float>(x)) * 1.2f;
+        float scaledY = static_cast<float>(y) + (points[i].y - static_cast<float>(y)) * 1.2f;
 
         // Connect the glow points
         int next = (i + 1) % 7;
-        float nextScaledX = x + (points[next].x - x) * 1.2f;
-        float nextScaledY = y + (points[next].y - y) * 1.2f;
+        float nextScaledX = static_cast<float>(x) + (points[next].x - static_cast<float>(x)) * 1.2f;
+        float nextScaledY = static_cast<float>(y) + (points[next].y - static_cast<float>(y)) * 1.2f;
 
         SDL_RenderLine(renderer, scaledX, scaledY, nextScaledX, nextScaledY);
     }
@@ -1025,8 +1027,21 @@ void Renderer::drawLaneLabels() {
     drawNeonSign(30, CENTER_Y, "WEST", {100, 255, 150, 255}, false);
 
     // Draw lane classification legend in a modern style
-    drawLaneLegend();
 }
+
+
+void Renderer::cleanup() {
+    // Add cleanup code here
+}
+
+void Renderer::toggleDebugOverlay() {
+    // Add toggle logic here
+}
+
+void Renderer::drawText(const std::string& text, int x, int y, SDL_Color color) {
+    // Ensure SDL_ttf is initialized and draw the text
+}
+
 
 void Renderer::drawNeonSign(int x, int y, const std::string& text, SDL_Color color, bool isHorizontal) {
     // Draw a neon-style sign with text
@@ -1040,8 +1055,8 @@ void Renderer::drawNeonSign(int x, int y, const std::string& text, SDL_Color col
     int signWidth = textWidth + 2 * SIGN_PADDING;
     int signHeight = CHAR_HEIGHT + 2 * SIGN_PADDING;
 
-    float signX = isHorizontal ? x - signWidth/2.0f : x - signHeight/2.0f;
-    float signY = isHorizontal ? y - signHeight/2.0f : y - signWidth/2.0f;
+    float signX = isHorizontal ? static_cast<float>(x - signWidth/2) : static_cast<float>(x - signHeight/2);
+    float signY = isHorizontal ? static_cast<float>(y - signHeight/2) : static_cast<float>(y - signWidth/2);
 
     // Draw outer glow
     for (int i = 1; i <= 5; i++) {
@@ -1049,15 +1064,15 @@ void Renderer::drawNeonSign(int x, int y, const std::string& text, SDL_Color col
 
         if (isHorizontal) {
             SDL_FRect glow = {
-                signX - i, signY - i,
-                signWidth + 2*i, signHeight + 2*i
+                signX - static_cast<float>(i), signY - static_cast<float>(i),
+                static_cast<float>(signWidth + 2*i), static_cast<float>(signHeight + 2*i)
             };
             SDL_RenderRect(renderer, &glow);
         } else {
             // Rotated 90 degrees for vertical sign
             SDL_FRect glow = {
-                signX - i, signY - i,
-                signHeight + 2*i, signWidth + 2*i
+                signX - static_cast<float>(i), signY - static_cast<float>(i),
+                static_cast<float>(signHeight + 2*i), static_cast<float>(signWidth + 2*i)
             };
             SDL_RenderRect(renderer, &glow);
         }
@@ -1068,13 +1083,13 @@ void Renderer::drawNeonSign(int x, int y, const std::string& text, SDL_Color col
     if (isHorizontal) {
         SDL_FRect signBg = {
             signX, signY,
-            signWidth, signHeight
+            static_cast<float>(signWidth), static_cast<float>(signHeight)
         };
         SDL_RenderFillRect(renderer, &signBg);
     } else {
         SDL_FRect signBg = {
             signX, signY,
-            signHeight, signWidth
+            static_cast<float>(signHeight), static_cast<float>(signWidth)
         };
         SDL_RenderFillRect(renderer, &signBg);
     }
@@ -1084,13 +1099,13 @@ void Renderer::drawNeonSign(int x, int y, const std::string& text, SDL_Color col
     if (isHorizontal) {
         SDL_FRect signBorder = {
             signX, signY,
-            signWidth, signHeight
+            static_cast<float>(signWidth), static_cast<float>(signHeight)
         };
         SDL_RenderRect(renderer, &signBorder);
     } else {
         SDL_FRect signBorder = {
             signX, signY,
-            signHeight, signWidth
+            static_cast<float>(signHeight), static_cast<float>(signWidth)
         };
         SDL_RenderRect(renderer, &signBorder);
     }
@@ -1100,12 +1115,12 @@ void Renderer::drawNeonSign(int x, int y, const std::string& text, SDL_Color col
         float charX, charY;
 
         if (isHorizontal) {
-            charX = signX + SIGN_PADDING + i * CHAR_WIDTH;
-            charY = signY + SIGN_PADDING;
+            charX = signX + static_cast<float>(SIGN_PADDING + i * CHAR_WIDTH);
+            charY = signY + static_cast<float>(SIGN_PADDING);
         } else {
             // Vertical text
-            charX = signX + SIGN_PADDING;
-            charY = signY + SIGN_PADDING + i * CHAR_WIDTH;
+            charX = signX + static_cast<float>(SIGN_PADDING);
+            charY = signY + static_cast<float>(SIGN_PADDING + i * CHAR_WIDTH);
         }
 
         // Draw character with neon glow
@@ -1143,36 +1158,6 @@ void Renderer::drawNeonChar(float x, float y, char c, SDL_Color color, bool isVe
             SDL_RenderLine(renderer, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT, x, y+CHAR_HEIGHT); // Bottom
             break;
 
-        case 'C':
-            SDL_RenderLine(renderer, x+CHAR_WIDTH, y, x+CHAR_WIDTH/4, y); // Top
-            SDL_RenderLine(renderer, x+CHAR_WIDTH/4, y, x, y+CHAR_HEIGHT/4); // Top curve
-            SDL_RenderLine(renderer, x, y+CHAR_HEIGHT/4, x, y+3*CHAR_HEIGHT/4); // Left
-            SDL_RenderLine(renderer, x, y+3*CHAR_HEIGHT/4, x+CHAR_WIDTH/4, y+CHAR_HEIGHT); // Bottom curve
-            SDL_RenderLine(renderer, x+CHAR_WIDTH/4, y+CHAR_HEIGHT, x+CHAR_WIDTH, y+CHAR_HEIGHT); // Bottom
-            break;
-
-        case 'D':
-            SDL_RenderLine(renderer, x, y, x, y+CHAR_HEIGHT); // Vertical
-            SDL_RenderLine(renderer, x, y, x+3*CHAR_WIDTH/4, y); // Top
-            SDL_RenderLine(renderer, x+3*CHAR_WIDTH/4, y, x+CHAR_WIDTH, y+CHAR_HEIGHT/4); // Top curve
-            SDL_RenderLine(renderer, x+CHAR_WIDTH, y+CHAR_HEIGHT/4, x+CHAR_WIDTH, y+3*CHAR_HEIGHT/4); // Right
-            SDL_RenderLine(renderer, x+CHAR_WIDTH, y+3*CHAR_HEIGHT/4, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT); // Bottom curve
-            SDL_RenderLine(renderer, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT, x, y+CHAR_HEIGHT); // Bottom
-            break;
-
-        case 'E':
-            SDL_RenderLine(renderer, x, y, x, y+CHAR_HEIGHT); // Vertical
-            SDL_RenderLine(renderer, x, y, x+CHAR_WIDTH, y); // Top
-            SDL_RenderLine(renderer, x, y+CHAR_HEIGHT/2, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT/2); // Middle
-            SDL_RenderLine(renderer, x, y+CHAR_HEIGHT, x+CHAR_WIDTH, y+CHAR_HEIGHT); // Bottom
-            break;
-
-        case 'H':
-            SDL_RenderLine(renderer, x, y, x, y+CHAR_HEIGHT); // Left vertical
-            SDL_RenderLine(renderer, x+CHAR_WIDTH, y, x+CHAR_WIDTH, y+CHAR_HEIGHT); // Right vertical
-            SDL_RenderLine(renderer, x, y+CHAR_HEIGHT/2, x+CHAR_WIDTH, y+CHAR_HEIGHT/2); // Middle
-            break;
-
         case 'N':
             SDL_RenderLine(renderer, x, y, x, y+CHAR_HEIGHT); // Left vertical
             SDL_RenderLine(renderer, x, y, x+CHAR_WIDTH, y+CHAR_HEIGHT); // Diagonal
@@ -1199,6 +1184,18 @@ void Renderer::drawNeonChar(float x, float y, char c, SDL_Color color, bool isVe
             SDL_RenderLine(renderer, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT/2, x+CHAR_WIDTH, y+CHAR_HEIGHT); // Diagonal
             break;
 
+        case 'T':
+            SDL_RenderLine(renderer, x, y, x+CHAR_WIDTH, y); // Top
+            SDL_RenderLine(renderer, x+CHAR_WIDTH/2, y, x+CHAR_WIDTH/2, y+CHAR_HEIGHT); // Vertical
+            break;
+
+        case 'E':
+            SDL_RenderLine(renderer, x, y, x, y+CHAR_HEIGHT); // Vertical
+            SDL_RenderLine(renderer, x, y, x+CHAR_WIDTH, y); // Top
+            SDL_RenderLine(renderer, x, y+CHAR_HEIGHT/2, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT/2); // Middle
+            SDL_RenderLine(renderer, x, y+CHAR_HEIGHT, x+CHAR_WIDTH, y+CHAR_HEIGHT); // Bottom
+            break;
+
         case 'S':
             SDL_RenderLine(renderer, x+CHAR_WIDTH, y, x+CHAR_WIDTH/4, y); // Top
             SDL_RenderLine(renderer, x+CHAR_WIDTH/4, y, x, y+CHAR_HEIGHT/4); // Top curve
@@ -1209,19 +1206,6 @@ void Renderer::drawNeonChar(float x, float y, char c, SDL_Color color, bool isVe
             SDL_RenderLine(renderer, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT, x, y+CHAR_HEIGHT); // Bottom
             break;
 
-        case 'T':
-            SDL_RenderLine(renderer, x, y, x+CHAR_WIDTH, y); // Top
-            SDL_RenderLine(renderer, x+CHAR_WIDTH/2, y, x+CHAR_WIDTH/2, y+CHAR_HEIGHT); // Vertical
-            break;
-
-        case 'U':
-            SDL_RenderLine(renderer, x, y, x, y+3*CHAR_HEIGHT/4); // Left
-            SDL_RenderLine(renderer, x, y+3*CHAR_HEIGHT/4, x+CHAR_WIDTH/4, y+CHAR_HEIGHT); // Bottom left
-            SDL_RenderLine(renderer, x+CHAR_WIDTH/4, y+CHAR_HEIGHT, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT); // Bottom
-            SDL_RenderLine(renderer, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT, x+CHAR_WIDTH, y+3*CHAR_HEIGHT/4); // Bottom right
-            SDL_RenderLine(renderer, x+CHAR_WIDTH, y+3*CHAR_HEIGHT/4, x+CHAR_WIDTH, y); // Right
-            break;
-
         case 'W':
             SDL_RenderLine(renderer, x, y, x+CHAR_WIDTH/4, y+CHAR_HEIGHT); // Left diagonal
             SDL_RenderLine(renderer, x+CHAR_WIDTH/4, y+CHAR_HEIGHT, x+CHAR_WIDTH/2, y+CHAR_HEIGHT/2); // Middle left
@@ -1229,19 +1213,25 @@ void Renderer::drawNeonChar(float x, float y, char c, SDL_Color color, bool isVe
             SDL_RenderLine(renderer, x+3*CHAR_WIDTH/4, y+CHAR_HEIGHT, x+CHAR_WIDTH, y); // Right diagonal
             break;
 
-        case 'Y':
-            SDL_RenderLine(renderer, x, y, x+CHAR_WIDTH/2, y+CHAR_HEIGHT/2); // Top left
-            SDL_RenderLine(renderer, x+CHAR_WIDTH, y, x+CHAR_WIDTH/2, y+CHAR_HEIGHT/2); // Top right
-            SDL_RenderLine(renderer, x+CHAR_WIDTH/2, y+CHAR_HEIGHT/2, x+CHAR_WIDTH/2, y+CHAR_HEIGHT); // Bottom
+        case 'H':
+            SDL_RenderLine(renderer, x, y, x, y+CHAR_HEIGHT); // Left vertical
+            SDL_RenderLine(renderer, x+CHAR_WIDTH, y, x+CHAR_WIDTH, y+CHAR_HEIGHT); // Right vertical
+            SDL_RenderLine(renderer, x, y+CHAR_HEIGHT/2, x+CHAR_WIDTH, y+CHAR_HEIGHT/2); // Middle
             break;
+
+        // Add more characters as needed
+        default:
+            // For unknown characters, draw a rectangle
+            SDL_FRect charRect = {x, y, CHAR_WIDTH, CHAR_HEIGHT};
+            SDL_RenderRect(renderer, &charRect);
     }
 
     // Draw glow effect
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 50);
     for (int i = 1; i <= 3; i++) {
         SDL_FRect glow = {
-            x - i, y - i,
-            CHAR_WIDTH + 2*i, CHAR_HEIGHT + 2*i
+            x - static_cast<float>(i), y - static_cast<float>(i),
+            CHAR_WIDTH + static_cast<float>(2*i), CHAR_HEIGHT + static_cast<float>(2*i)
         };
         SDL_RenderRect(renderer, &glow);
     }
@@ -1249,103 +1239,7 @@ void Renderer::drawNeonChar(float x, float y, char c, SDL_Color color, bool isVe
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 }
 
-void Renderer::drawLaneLegend() {
-    // Draw a modern, minimalist legend in bottom-left corner
-    const int LEGEND_X = 20;
-    const int LEGEND_Y = windowHeight - 140;
-    const int BOX_SIZE = 15;
-    const int SPACING = 25;
 
-    // Draw glass-style background panel with rounded corners
-    SDL_SetRenderDrawColor(renderer, 20, 20, 30, 200);
-    SDL_FRect panel = {
-        static_cast<float>(LEGEND_X - 10),
-        static_cast<float>(LEGEND_Y - 10),
-        140.0f, 130.0f
-    };
-    SDL_RenderFillRect(renderer, &panel);
-
-    // Panel border glow
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, 100, 100, 150, 50);
-    for (int i = 1; i <= 3; i++) {
-        SDL_FRect glow = {
-            panel.x - i, panel.y - i,
-            panel.w + 2*i, panel.h + 2*i
-        };
-        SDL_RenderRect(renderer, &glow);
-    }
-
-    // Draw panel border
-    SDL_SetRenderDrawColor(renderer, 100, 100, 150, 255);
-    SDL_RenderRect(renderer, &panel);
-
-    // Panel title
-    drawNeonSign(LEGEND_X + 60, LEGEND_Y - 5, "LANES", {180, 180, 255, 255}, true);
-
-    // Blue Box - Lane 1 (Incoming)
-    SDL_SetRenderDrawColor(renderer, 30, 144, 255, 255);
-    SDL_FRect l1Box = {
-        static_cast<float>(LEGEND_X),
-        static_cast<float>(LEGEND_Y + 25),
-        static_cast<float>(BOX_SIZE),
-        static_cast<float>(BOX_SIZE)
-    };
-    SDL_RenderFillRect(renderer, &l1Box);
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    SDL_RenderRect(renderer, &l1Box);
-
-    // Draw "Incoming" next to box
-    SDL_SetRenderDrawColor(renderer, 200, 200, 255, 255);
-    drawText("Incoming", LEGEND_X + BOX_SIZE + 10, LEGEND_Y + 25, {200, 200, 255, 255});
-
-    // Orange Box - Lane A2 (Priority)
-    SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255);
-    SDL_FRect l2Box = {
-        static_cast<float>(LEGEND_X),
-        static_cast<float>(LEGEND_Y + 25 + SPACING),
-        static_cast<float>(BOX_SIZE),
-        static_cast<float>(BOX_SIZE)
-    };
-    SDL_RenderFillRect(renderer, &l2Box);
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    SDL_RenderRect(renderer, &l2Box);
-
-    // Draw "Priority" next to box
-    drawText("Priority", LEGEND_X + BOX_SIZE + 10, LEGEND_Y + 25 + SPACING, {255, 200, 100, 255});
-
-    // Green Box - Lane 3 (Free)
-    SDL_SetRenderDrawColor(renderer, 50, 205, 50, 255);
-    SDL_FRect l3Box = {
-        static_cast<float>(LEGEND_X),
-        static_cast<float>(LEGEND_Y + 25 + 2*SPACING),
-        static_cast<float>(BOX_SIZE),
-        static_cast<float>(BOX_SIZE)
-    };
-    SDL_RenderFillRect(renderer, &l3Box);
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    SDL_RenderRect(renderer, &l3Box);
-
-    // Draw "Free Lane" next to box
-    drawText("Free Lane", LEGEND_X + BOX_SIZE + 10, LEGEND_Y + 25 + 2*SPACING, {150, 255, 150, 255});
-
-    // Yellow Box - Normal Lanes
-    SDL_SetRenderDrawColor(renderer, 218, 165, 32, 255);
-    SDL_FRect normalBox = {
-        static_cast<float>(LEGEND_X),
-        static_cast<float>(LEGEND_Y + 25 + 3*SPACING),
-        static_cast<float>(BOX_SIZE),
-        static_cast<float>(BOX_SIZE)
-    };
-    SDL_RenderFillRect(renderer, &normalBox);
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    SDL_RenderRect(renderer, &normalBox);
-
-    // Draw "Normal" next to box
-    drawText("Normal", LEGEND_X + BOX_SIZE + 10, LEGEND_Y + 25 + 3*SPACING, {255, 220, 150, 255});
-
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-}
 
 void Renderer::drawTrafficLights() {
     if (!trafficManager) {
@@ -1397,7 +1291,9 @@ void Renderer::renderModernVehicle(Vehicle* vehicle, int queuePos) {
     // Add additional modern effects
     float x = vehicle->getTurnPosX();
     float y = vehicle->getTurnPosY();
-    Direction dir = vehicle->getDestination() == Destination::LEFT ? Direction::LEFT : Direction::STRAIGHT;
+
+    // Get direction from vehicle
+    Direction dir = vehicle->getDestination() == Destination::STRAIGHT ? Direction::DOWN : Direction::LEFT;
 
     // Add headlight/taillight glow
     drawVehicleLights(x, y, vehicle->getLaneNumber(), vehicle->getLane(), dir, vehicle->isTurning(), vehicle->getDestination());
@@ -1427,7 +1323,13 @@ void Renderer::drawVehicleLights(float x, float y, int laneNumber, char laneChar
     float backX1, backY1, backX2, backY2;     // Back lights (taillights)
 
     // Use turn progress for smooth transition during turns
-    float turnFactor = isTurning ? vehicle->getTurnProgress() : 0.0f;
+    float turnProgress = 0.0f; // Default value since we don't have access to the vehicle's internal function
+    if (isTurning) {
+        // Approximate turn progress based on reasonable defaults
+        turnProgress = 0.5f; // Default to midway through the turn
+    }
+
+    float turnFactor = turnProgress;
 
     // Adjust headlight positions based on heading
     switch (heading) {
@@ -1574,14 +1476,18 @@ void Renderer::drawVehicleLights(float x, float y, int laneNumber, char laneChar
         SDL_SetRenderDrawColor(renderer, 255, 255, 220, 200/(i*2));
 
         SDL_FRect headGlow1 = {
-            frontX1 - LIGHT_RADIUS/2 - i, frontY1 - LIGHT_RADIUS/2 - i,
-            LIGHT_RADIUS + 2*i, LIGHT_RADIUS + 2*i
+            frontX1 - LIGHT_RADIUS/2 - static_cast<float>(i),
+            frontY1 - LIGHT_RADIUS/2 - static_cast<float>(i),
+            LIGHT_RADIUS + static_cast<float>(2*i),
+            LIGHT_RADIUS + static_cast<float>(2*i)
         };
         SDL_RenderFillRect(renderer, &headGlow1);
 
         SDL_FRect headGlow2 = {
-            frontX2 - LIGHT_RADIUS/2 - i, frontY2 - LIGHT_RADIUS/2 - i,
-            LIGHT_RADIUS + 2*i, LIGHT_RADIUS + 2*i
+            frontX2 - LIGHT_RADIUS/2 - static_cast<float>(i),
+            frontY2 - LIGHT_RADIUS/2 - static_cast<float>(i),
+            LIGHT_RADIUS + static_cast<float>(2*i),
+            LIGHT_RADIUS + static_cast<float>(2*i)
         };
         SDL_RenderFillRect(renderer, &headGlow2);
     }
@@ -1605,14 +1511,18 @@ void Renderer::drawVehicleLights(float x, float y, int laneNumber, char laneChar
         SDL_SetRenderDrawColor(renderer, 255, 60, 60, 200/(i*2));
 
         SDL_FRect tailGlow1 = {
-            backX1 - LIGHT_RADIUS/2 - i, backY1 - LIGHT_RADIUS/2 - i,
-            LIGHT_RADIUS + 2*i, LIGHT_RADIUS + 2*i
+            backX1 - LIGHT_RADIUS/2 - static_cast<float>(i),
+            backY1 - LIGHT_RADIUS/2 - static_cast<float>(i),
+            LIGHT_RADIUS + static_cast<float>(2*i),
+            LIGHT_RADIUS + static_cast<float>(2*i)
         };
         SDL_RenderFillRect(renderer, &tailGlow1);
 
         SDL_FRect tailGlow2 = {
-            backX2 - LIGHT_RADIUS/2 - i, backY2 - LIGHT_RADIUS/2 - i,
-            LIGHT_RADIUS + 2*i, LIGHT_RADIUS + 2*i
+            backX2 - LIGHT_RADIUS/2 - static_cast<float>(i),
+            backY2 - LIGHT_RADIUS/2 - static_cast<float>(i),
+            LIGHT_RADIUS + static_cast<float>(2*i),
+            LIGHT_RADIUS + static_cast<float>(2*i)
         };
         SDL_RenderFillRect(renderer, &tailGlow2);
     }
@@ -1660,8 +1570,10 @@ void Renderer::drawVehicleLights(float x, float y, int laneNumber, char laneChar
                 SDL_SetRenderDrawColor(renderer, 255, 180, 0, 200/(i*2));
 
                 SDL_FRect turnGlow = {
-                    turnX - LIGHT_RADIUS/2 - i, turnY - LIGHT_RADIUS/2 - i,
-                    LIGHT_RADIUS + 2*i, LIGHT_RADIUS + 2*i
+                    turnX - LIGHT_RADIUS/2 - static_cast<float>(i),
+                    turnY - LIGHT_RADIUS/2 - static_cast<float>(i),
+                    LIGHT_RADIUS + static_cast<float>(2*i),
+                    LIGHT_RADIUS + static_cast<float>(2*i)
                 };
                 SDL_RenderFillRect(renderer, &turnGlow);
             }
@@ -1731,10 +1643,10 @@ void Renderer::drawDebugOverlay() {
     for (int i = 1; i <= 3; i++) {
         SDL_SetRenderDrawColor(renderer, 100, 140, 200, 100/i);
         SDL_FRect glowRect = {
-            panelRect.x - i,
-            panelRect.y - i,
-            panelRect.w + 2*i,
-            panelRect.h + 2*i
+            panelRect.x - static_cast<float>(i),
+            panelRect.y - static_cast<float>(i),
+            panelRect.w + static_cast<float>(2*i),
+            panelRect.h + static_cast<float>(2*i)
         };
         SDL_RenderRect(renderer, &glowRect);
     }
@@ -1778,6 +1690,7 @@ void Renderer::drawDebugOverlay() {
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 }
 
+// Replace your entire drawStatistics() method with this implementation
 void Renderer::drawStatistics() {
     if (!trafficManager) {
         return;
@@ -1793,7 +1706,6 @@ void Renderer::drawStatistics() {
 
     // Draw statistics with modern styling
     while (std::getline(stream, line)) {
-        // Lane statistics in different colors
         if (line.find("Lane Statistics") != std::string::npos) {
             // Section header - bright blue
             drawText(line, windowWidth - 290, y, {160, 200, 255, 255});
@@ -1806,7 +1718,7 @@ void Renderer::drawStatistics() {
             // Priority lane A2 - orange with pulsing effect
             uint32_t time = SDL_GetTicks();
             int pulse = static_cast<int>(30 * sin(time * 0.003) + 225);
-            drawText(line, windowWidth - 290, y, {255, pulse, 0, 255});
+            drawText(line, windowWidth - 290, y, {255, static_cast<Uint8>(pulse), 0, 255});
         }
         else if (line.find("PRIORITY") != std::string::npos) {
             // Priority mode active - flashing orange
@@ -1814,41 +1726,52 @@ void Renderer::drawStatistics() {
             bool flash = (time / 500) % 2 == 0;
             SDL_Color color = flash ? SDL_Color{255, 180, 0, 255} : SDL_Color{255, 120, 0, 255};
             drawText(line, windowWidth - 290, y, color);
-
-            // Add alert icon
-            drawAlertIcon(windowWidth - 300, y + 8);
-        }
-        else if (line.find("Traffic Light") != std::string::npos) {
-            // Traffic light state with state-specific color
-            SDL_Color stateColor = {255, 255, 255, 255};
-
-            if (line.find("ALL RED") != std::string::npos) {
-                stateColor = {255, 100, 100, 255};
-            } else if (line.find("GREEN") != std::string::npos) {
-                stateColor = {100, 255, 100, 255};
-            }
-
-            drawText(line, windowWidth - 290, y, stateColor);
         }
         else {
-            // Default text color - light blue
-            drawText(line, windowWidth - 290, y, {180, 210, 255, 255});
+            // Regular lines - white
+            drawText(line, windowWidth - 290, y, {220, 220, 255, 255});
         }
-
         y += 20;
     }
 
-    // Add current time display
-    std::time_t now = std::time(nullptr);
-    std::tm timeinfo;
-    #ifdef _WIN32
-        localtime_s(&timeinfo, &now);
-    #else
-        localtime_r(&now, &timeinfo);
-    #endif
+    // Show current traffic light state
+    TrafficLight* trafficLight = trafficManager->getTrafficLight();
+    if (trafficLight) {
+        y += 10; // Extra space
+        std::string stateStr = "Traffic Light: ";
+        SDL_Color stateColor;
 
-    char timeStr[64];
-    std::strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
+        auto currentState = trafficLight->getCurrentState();
+        switch (currentState) {
+            case TrafficLight::State::ALL_RED:
+                stateStr += "All Red";
+                stateColor = {255, 100, 100, 255};
+                break;
+            case TrafficLight::State::A_GREEN:
+                stateStr += "A Green (North)";
+                stateColor = {100, 255, 100, 255};
+                break;
+            case TrafficLight::State::B_GREEN:
+                stateStr += "B Green (East)";
+                stateColor = {100, 255, 100, 255};
+                break;
+            case TrafficLight::State::C_GREEN:
+                stateStr += "C Green (South)";
+                stateColor = {100, 255, 100, 255};
+                break;
+            case TrafficLight::State::D_GREEN:
+                stateStr += "D Green (West)";
+                stateColor = {100, 255, 100, 255};
+                break;
+        }
 
-    drawText(timeStr, windowWidth - 100, 30, {220, 220, 255, 255});
+        // Pulsing effect for green lights
+        if (currentState != TrafficLight::State::ALL_RED) {
+            uint32_t time = SDL_GetTicks();
+            int pulse = static_cast<int>(40 * sin(time * 0.005) + 215);
+            stateColor.g = pulse;
+        }
+
+        drawText(stateStr, windowWidth - 290, y, stateColor);
+    }
 }

@@ -83,7 +83,6 @@ private:
     void drawLaneMarker(int x, int y, const std::string& label, SDL_Color color, bool isVertical);
     void drawNeonSign(int x, int y, const std::string& text, SDL_Color color, bool isHorizontal);
     void drawNeonChar(float x, float y, char c, SDL_Color color, bool isVertical);
-    void drawLaneLegend();
     void drawLaneFlowArrow(int x, int y, Direction dir);
 
     // Text and character rendering
