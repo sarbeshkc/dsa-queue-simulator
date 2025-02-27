@@ -9,9 +9,7 @@
 #include "utils/DebugLogger.h"
 #include <cmath>
 #include <sstream>
-
-// FILE: src/core/Vehicle.cpp
-// This fixes the vehicle initialization and lane positioning to match the road layout
+#include <random> // Add this for random number generation
 
 Vehicle::Vehicle(const std::string& id, char lane, int laneNumber, bool isEmergency)
     : id(id),
@@ -72,7 +70,7 @@ Vehicle::Vehicle(const std::string& id, char lane, int laneNumber, bool isEmerge
     switch (lane) {
         case 'A': // North road (top)
             // Lane 1 is not spawned (it's incoming)
-            // Lane 2 is middle lane - can go straight or right
+            // Lane 2 is middle lane - can go straight or left
             // Lane 3 is rightmost lane - always turns left
             switch (laneNumber) {
                 case 2:
@@ -150,20 +148,20 @@ Vehicle::Vehicle(const std::string& id, char lane, int laneNumber, bool isEmerge
         DebugLogger::log(msg);
     }
     else if (laneNumber == 2) {
-        // Lane 2 (L2) can go straight or turn right
+        // Lane 2 (L2) can go straight or left (not right)
         // Check for direction indication in ID
-        if (id.find("_RIGHT") != std::string::npos) {
-            destination = Destination::RIGHT;
+        if (id.find("_LEFT") != std::string::npos) {
+            destination = Destination::LEFT;
         } else if (id.find("_STRAIGHT") != std::string::npos) {
             destination = Destination::STRAIGHT;
         } else {
-            // Default behavior: 60% straight, 40% right
+            // Default behavior: 60% straight, 40% left
             int idHash = 0;
             for (char c : id) idHash += c;
-            destination = (idHash % 10 < 6) ? Destination::STRAIGHT : Destination::RIGHT;
+            destination = (idHash % 10 < 6) ? Destination::STRAIGHT : Destination::LEFT;
         }
 
-        std::string destStr = (destination == Destination::STRAIGHT) ? "STRAIGHT" : "RIGHT";
+        std::string destStr = (destination == Destination::STRAIGHT) ? "STRAIGHT" : "LEFT";
         DebugLogger::log("Vehicle " + id + " on lane " + lane + std::to_string(laneNumber) + " will go " + destStr);
     }
     else if (laneNumber == 1) {
@@ -181,12 +179,6 @@ Vehicle::~Vehicle() {
     oss << "Destroyed vehicle " << id;
     DebugLogger::log(oss.str());
 }
-
-// FILE: src/core/Vehicle.cpp
-// Fixes for the initializeWaypoints method to ensure proper lane transitions
-
-// FILE: src/core/Vehicle.cpp
-// Fixes for the initializeWaypoints method to ensure proper lane transitions
 
 void Vehicle::initializeWaypoints() {
     // Window dimensions
@@ -208,6 +200,11 @@ void Vehicle::initializeWaypoints() {
     // Lane offset - consistent with vehicle initialization
     const float laneOffset = 50.0f;
 
+    // Define offsets for the lanes - L1, L2, L3
+    const float lane1Offset = -20.0f;  // Offset for Lane 1 (incoming)
+    const float lane2Offset = 0.0f;    // Lane 2 is aligned with center
+    const float lane3Offset = 20.0f;   // Offset for Lane 3 (free lane)
+
     // Add the starting position as first waypoint
     waypoints.push_back({turnPosX, turnPosY});
 
@@ -227,126 +224,208 @@ void Vehicle::initializeWaypoints() {
             break;
     }
 
-    // Add path through intersection based on lane number and destination
-    if (destination == Destination::STRAIGHT) {
-        // STRAIGHT movements (Lane 2 can go straight)
+    // UPDATED TURNING LOGIC BASED ON ASSIGNMENT REQUIREMENTS:
+    // AL3 → BL1; AL2: Straight → CL1, Left → DL1
+    // BL3 → CL1; BL2: Straight → DL1, Left → AL1
+    // CL3 → DL1; CL2: Straight → AL1, Left → BL1
+    // DL3 → AL1; DL2: Straight → BL1, Left → CL1
+
+    if (laneNumber == 3) {
+        // Lane 3 always turns left - Updated for the required routing with improved turns
         switch (currentDirection) {
-            case Direction::DOWN:  // A(North) to C(South)
-                waypoints.push_back({turnPosX, bottomEdge + 5.0f});  // Exit point
-                waypoints.push_back({turnPosX, windowHeight + 30.0f});  // Off screen
+            case Direction::DOWN:  // A(North) to B(East) - AL3 → BL1
+                // First intermediate point
+                waypoints.push_back({turnPosX - 10.0f, topEdge + 20.0f});
+
+                // Second intermediate point - smoother turn
+                waypoints.push_back({centerX - 20.0f, centerY - 30.0f});
+
+                // Third intermediate point - approaching exit
+                waypoints.push_back({rightEdge - 20.0f, centerY + lane1Offset});
+
+                // Exit point - precisely at BL1
+                waypoints.push_back({rightEdge + 5.0f, centerY + lane1Offset});
+
+                // Off screen
+                waypoints.push_back({windowWidth + 30.0f, centerY + lane1Offset});
                 break;
-            case Direction::UP:    // C(South) to A(North)
-                waypoints.push_back({turnPosX, topEdge - 5.0f});
-                waypoints.push_back({turnPosX, -30.0f});
+
+            case Direction::UP:    // C(South) to D(West) - CL3 → DL1
+                // First intermediate point
+                waypoints.push_back({turnPosX + 10.0f, bottomEdge - 20.0f});
+
+                // Second intermediate point - smoother turn
+                waypoints.push_back({centerX + 20.0f, centerY + 30.0f});
+
+                // Third intermediate point - approaching exit
+                waypoints.push_back({leftEdge + 20.0f, centerY + lane1Offset});
+
+                // Exit point - precisely at DL1
+                waypoints.push_back({leftEdge - 5.0f, centerY + lane1Offset});
+
+                // Off screen
+                waypoints.push_back({-30.0f, centerY + lane1Offset});
                 break;
-            case Direction::LEFT:  // B(East) to D(West)
-                waypoints.push_back({leftEdge - 5.0f, turnPosY});
-                waypoints.push_back({-30.0f, turnPosY});
+
+            case Direction::LEFT:  // B(East) to C(South) - BL3 → CL1
+                // First intermediate point
+                waypoints.push_back({rightEdge - 20.0f, turnPosY - 10.0f});
+
+                // Second intermediate point - smoother turn
+                waypoints.push_back({centerX + 30.0f, centerY - 20.0f});
+
+                // Third intermediate point - approaching exit
+                waypoints.push_back({centerX + lane1Offset, bottomEdge - 20.0f});
+
+                // Exit point - precisely at CL1
+                waypoints.push_back({centerX + lane1Offset, bottomEdge + 5.0f});
+
+                // Off screen
+                waypoints.push_back({centerX + lane1Offset, windowHeight + 30.0f});
                 break;
-            case Direction::RIGHT: // D(West) to B(East)
-                waypoints.push_back({rightEdge + 5.0f, turnPosY});
-                waypoints.push_back({windowWidth + 30.0f, turnPosY});
+
+            case Direction::RIGHT: // D(West) to A(North) - DL3 → AL1
+                // First intermediate point
+                waypoints.push_back({leftEdge + 20.0f, turnPosY + 10.0f});
+
+                // Second intermediate point - smoother turn
+                waypoints.push_back({centerX - 30.0f, centerY + 20.0f});
+
+                // Third intermediate point - approaching exit
+                waypoints.push_back({centerX + lane1Offset, topEdge + 20.0f});
+
+                // Exit point - precisely at AL1
+                waypoints.push_back({centerX + lane1Offset, topEdge - 5.0f});
+
+                // Off screen
+                waypoints.push_back({centerX + lane1Offset, -30.0f});
                 break;
         }
     }
-    else if (destination == Destination::LEFT) {
-        // LEFT turn movements (Lane 3 always turns left)
-        float centerPointX, centerPointY, exitPointX, exitPointY;
+    else if (laneNumber == 2) {
+        if (destination == Destination::STRAIGHT) {
+            // Straight movements with gradual adjustment to reach L1
+            switch (currentDirection) {
+                case Direction::DOWN:  // A(North) to C(South) - AL2(straight) → CL1
+                    // Through the intersection - slight adjustment to reach CL1
+                    waypoints.push_back({turnPosX, centerY - 20.0f});
+                    waypoints.push_back({centerX + lane1Offset, centerY + 20.0f});
 
-        switch (currentDirection) {
-            case Direction::DOWN:  // A(North) to D(West) - Lane 3 to Lane 1
-                centerPointX = centerX - laneOffset;
-                centerPointY = centerY - laneOffset;
-                exitPointX = leftEdge - 5.0f;
-                exitPointY = centerY;  // Lane 1 position (D)
+                    // Exit point - precisely at CL1
+                    waypoints.push_back({centerX + lane1Offset, bottomEdge + 5.0f});
 
-                waypoints.push_back({centerPointX, centerPointY});  // Turn center
-                waypoints.push_back({exitPointX, exitPointY});      // Exit point
-                waypoints.push_back({-30.0f, exitPointY});          // Off screen
-                break;
+                    // Off screen
+                    waypoints.push_back({centerX + lane1Offset, windowHeight + 30.0f});
+                    break;
 
-            case Direction::UP:    // C(South) to B(East) - Lane 3 to Lane 1
-                centerPointX = centerX + laneOffset;
-                centerPointY = centerY + laneOffset;
-                exitPointX = rightEdge + 5.0f;
-                exitPointY = centerY;  // Lane 1 position (B)
+                case Direction::UP:    // C(South) to A(North) - CL2(straight) → AL1
+                    // Through the intersection - slight adjustment to reach AL1
+                    waypoints.push_back({turnPosX, centerY + 20.0f});
+                    waypoints.push_back({centerX + lane1Offset, centerY - 20.0f});
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({windowWidth + 30.0f, exitPointY});
-                break;
+                    // Exit point - precisely at AL1
+                    waypoints.push_back({centerX + lane1Offset, topEdge - 5.0f});
 
-            case Direction::LEFT:  // B(East) to A(North) - Lane 3 to Lane 1
-                centerPointX = centerX + laneOffset;
-                centerPointY = centerY - laneOffset;
-                exitPointX = centerX;  // Lane 1 position (A)
-                exitPointY = topEdge - 5.0f;
+                    // Off screen
+                    waypoints.push_back({centerX + lane1Offset, -30.0f});
+                    break;
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({exitPointX, -30.0f});
-                break;
+                case Direction::LEFT:  // B(East) to D(West) - BL2(straight) → DL1
+                    // Through the intersection - slight adjustment to reach DL1
+                    waypoints.push_back({centerX + 20.0f, turnPosY});
+                    waypoints.push_back({centerX - 20.0f, centerY + lane1Offset});
 
-            case Direction::RIGHT: // D(West) to C(South) - Lane 3 to Lane 1
-                centerPointX = centerX - laneOffset;
-                centerPointY = centerY + laneOffset;
-                exitPointX = centerX;  // Lane 1 position (C)
-                exitPointY = bottomEdge + 5.0f;
+                    // Exit point - precisely at DL1
+                    waypoints.push_back({leftEdge - 5.0f, centerY + lane1Offset});
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({exitPointX, windowHeight + 30.0f});
-                break;
+                    // Off screen
+                    waypoints.push_back({-30.0f, centerY + lane1Offset});
+                    break;
+
+                case Direction::RIGHT: // D(West) to B(East) - DL2(straight) → BL1
+                    // Through the intersection - slight adjustment to reach BL1
+                    waypoints.push_back({centerX - 20.0f, turnPosY});
+                    waypoints.push_back({centerX + 20.0f, centerY + lane1Offset});
+
+                    // Exit point - precisely at BL1
+                    waypoints.push_back({rightEdge + 5.0f, centerY + lane1Offset});
+
+                    // Off screen
+                    waypoints.push_back({windowWidth + 30.0f, centerY + lane1Offset});
+                    break;
+            }
         }
-    }
-    else if (destination == Destination::RIGHT) {
-        // RIGHT turn movements (Lane 2 can turn right)
-        float centerPointX, centerPointY, exitPointX, exitPointY;
+        else if (destination == Destination::LEFT) {
+            // Left turn movements with smooth Bezier curves
+            switch (currentDirection) {
+                case Direction::DOWN:  // A(North) to D(West) - AL2(left) → DL1
+                    // First intermediate point
+                    waypoints.push_back({turnPosX - 20.0f, topEdge + 15.0f});
 
-        switch (currentDirection) {
-            case Direction::DOWN:  // A(North) to B(East) - Lane 2 to Lane 1
-                centerPointX = centerX + laneOffset;
-                centerPointY = centerY - laneOffset;
-                exitPointX = rightEdge + 5.0f;
-                exitPointY = centerY;  // Lane 1 position (B)
+                    // Second intermediate point - smoother turn
+                    waypoints.push_back({centerX - 40.0f, centerY - 20.0f});
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({windowWidth + 30.0f, exitPointY});
-                break;
+                    // Third intermediate point - approaching exit
+                    waypoints.push_back({leftEdge + 20.0f, centerY + lane1Offset});
 
-            case Direction::UP:    // C(South) to D(West) - Lane 2 to Lane 1
-                centerPointX = centerX - laneOffset;
-                centerPointY = centerY + laneOffset;
-                exitPointX = leftEdge - 5.0f;
-                exitPointY = centerY;  // Lane 1 position (D)
+                    // Exit point - precisely at DL1
+                    waypoints.push_back({leftEdge - 5.0f, centerY + lane1Offset});
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({-30.0f, exitPointY});
-                break;
+                    // Off screen
+                    waypoints.push_back({-30.0f, centerY + lane1Offset});
+                    break;
 
-            case Direction::LEFT:  // B(East) to C(South) - Lane 2 to Lane 1
-                centerPointX = centerX + laneOffset;
-                centerPointY = centerY + laneOffset;
-                exitPointX = centerX;  // Lane 1 position (C)
-                exitPointY = bottomEdge + 5.0f;
+                case Direction::UP:    // C(South) to B(East) - CL2(left) → BL1
+                    // First intermediate point
+                    waypoints.push_back({turnPosX + 20.0f, bottomEdge - 15.0f});
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({exitPointX, windowHeight + 30.0f});
-                break;
+                    // Second intermediate point - smoother turn
+                    waypoints.push_back({centerX + 40.0f, centerY + 20.0f});
 
-            case Direction::RIGHT: // D(West) to A(North) - Lane 2 to Lane 1
-                centerPointX = centerX - laneOffset;
-                centerPointY = centerY - laneOffset;
-                exitPointX = centerX;  // Lane 1 position (A)
-                exitPointY = topEdge - 5.0f;
+                    // Third intermediate point - approaching exit
+                    waypoints.push_back({rightEdge - 20.0f, centerY + lane1Offset});
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({exitPointX, -30.0f});
-                break;
+                    // Exit point - precisely at BL1
+                    waypoints.push_back({rightEdge + 5.0f, centerY + lane1Offset});
+
+                    // Off screen
+                    waypoints.push_back({windowWidth + 30.0f, centerY + lane1Offset});
+                    break;
+
+                case Direction::LEFT:  // B(East) to A(North) - BL2(left) → AL1
+                    // First intermediate point
+                    waypoints.push_back({rightEdge - 15.0f, turnPosY - 20.0f});
+
+                    // Second intermediate point - smoother turn
+                    waypoints.push_back({centerX + 20.0f, centerY - 40.0f});
+
+                    // Third intermediate point - approaching exit
+                    waypoints.push_back({centerX + lane1Offset, topEdge + 20.0f});
+
+                    // Exit point - precisely at AL1
+                    waypoints.push_back({centerX + lane1Offset, topEdge - 5.0f});
+
+                    // Off screen
+                    waypoints.push_back({centerX + lane1Offset, -30.0f});
+                    break;
+
+                case Direction::RIGHT: // D(West) to C(South) - DL2(left) → CL1
+                    // First intermediate point
+                    waypoints.push_back({leftEdge + 15.0f, turnPosY + 20.0f});
+
+                    // Second intermediate point - smoother turn
+                    waypoints.push_back({centerX - 20.0f, centerY + 40.0f});
+
+                    // Third intermediate point - approaching exit
+                    waypoints.push_back({centerX + lane1Offset, bottomEdge - 20.0f});
+
+                    // Exit point - precisely at CL1
+                    waypoints.push_back({centerX + lane1Offset, bottomEdge + 5.0f});
+
+                    // Off screen
+                    waypoints.push_back({centerX + lane1Offset, windowHeight + 30.0f});
+                    break;
+            }
         }
     }
 
@@ -453,8 +532,9 @@ float Vehicle::easeInOutQuad(float t) const {
 
 void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
     // Fine-tune speed for smoother animation
-    const float SPEED = 0.02f * delta;
-    const float VEHICLE_SPACING = 35.0f; // Must match laneOffset in constructor
+    const float SPEED_BASE = 0.018f;
+    const float SPEED = SPEED_BASE * delta;
+    const float VEHICLE_SPACING = 50.0f; // Increased from 35.0f for better separation
 
     // Free lane (lane 3) always has green light
     bool canMove = isGreenLight || laneNumber == 3;
@@ -477,113 +557,165 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
             if (distance < 3.0f) {
                 currentWaypoint++;
 
-                // If entering the intersection and turning, flag as turning
-                if (currentWaypoint == 2 &&
-                    (destination == Destination::LEFT || destination == Destination::RIGHT)) {
-                    turning = true;
-                    turnProgress = 0.0f;
-                    state = VehicleState::IN_INTERSECTION;
+                // For L3 (always turns left) and L2 (turns left if specified)
+                if ((laneNumber == 3) ||
+                    (laneNumber == 2 && destination == Destination::LEFT)) {
 
-                    // Log turn start
-                    std::ostringstream oss;
-                    oss << "Vehicle " << id << " is now turning "
-                        << (destination == Destination::LEFT ? "LEFT" : "RIGHT");
-                    DebugLogger::log(oss.str());
+                    // When entering turning points (varies by direction)
+                    if (currentWaypoint == 2) {
+                        turning = true;
+                        turnProgress = 0.0f;
+                        state = VehicleState::IN_INTERSECTION;
+
+                        // Log turn start
+                        std::ostringstream oss;
+                        oss << "Vehicle " << id << " is now turning LEFT";
+                        DebugLogger::log(oss.str());
+                    }
                 }
 
-                // If exiting the intersection
-                if (currentWaypoint == 3) {
+                // Determine when a vehicle has exited the intersection
+                // This depends on the lane and destination
+                bool isExiting = false;
+
+                if (laneNumber == 3) {
+                    // L3 vehicles have 5 waypoints typically
+                    isExiting = (currentWaypoint == 4);
+                } else if (laneNumber == 2) {
+                    if (destination == Destination::LEFT) {
+                        // L2 turning left has 5 waypoints
+                        isExiting = (currentWaypoint == 4);
+                    } else {
+                        // L2 going straight has 4 waypoints
+                        isExiting = (currentWaypoint == 3);
+                    }
+                }
+
+                // Update vehicle state when exiting
+                if (isExiting) {
                     turning = false;
                     state = VehicleState::EXITING;
 
-                    // Update lane and number based on destination and direction
-                    // This follows the assignment rules for lane changes
+                    // Update lane and number based on assignment rules:
+                    // AL3 → BL1; AL2: Straight → CL1, Left → DL1
+                    // BL3 → CL1; BL2: Straight → DL1, Left → AL1
+                    // CL3 → DL1; CL2: Straight → AL1, Left → BL1
+                    // DL3 → AL1; DL2: Straight → BL1, Left → CL1
+
+                    std::string newLaneStr;
                     switch (currentDirection) {
                         case Direction::DOWN:  // From North (A)
-                            if (destination == Destination::LEFT) {
-                                lane = 'D';  // Go to West
-                                laneNumber = 1;
-                                currentDirection = Direction::RIGHT;
-                                DebugLogger::log("Vehicle " + id + " now on D1 (turned LEFT from A)");
-                            }
-                            else if (destination == Destination::RIGHT) {
-                                lane = 'B';  // Go to East
+                            if (laneNumber == 3) {
+                                // AL3 → BL1
+                                lane = 'B';
                                 laneNumber = 1;
                                 currentDirection = Direction::LEFT;
-                                DebugLogger::log("Vehicle " + id + " now on B1 (turned RIGHT from A)");
+                                newLaneStr = "B1 (turned LEFT from A3)";
+                            }
+                            else if (destination == Destination::LEFT) {
+                                // AL2(left) → DL1
+                                lane = 'D';
+                                laneNumber = 1;
+                                currentDirection = Direction::RIGHT;
+                                newLaneStr = "D1 (turned LEFT from A2)";
                             }
                             else {
-                                // Going straight to South
+                                // AL2(straight) → CL1
                                 lane = 'C';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on C1 (going STRAIGHT from A)");
+                                newLaneStr = "C1 (going STRAIGHT from A2)";
                             }
                             break;
 
                         case Direction::UP:    // From South (C)
-                            if (destination == Destination::LEFT) {
-                                lane = 'B';  // Go to East
-                                laneNumber = 1;
-                                currentDirection = Direction::LEFT;
-                                DebugLogger::log("Vehicle " + id + " now on B1 (turned LEFT from C)");
-                            }
-                            else if (destination == Destination::RIGHT) {
-                                lane = 'D';  // Go to West
+                            if (laneNumber == 3) {
+                                // CL3 → DL1
+                                lane = 'D';
                                 laneNumber = 1;
                                 currentDirection = Direction::RIGHT;
-                                DebugLogger::log("Vehicle " + id + " now on D1 (turned RIGHT from C)");
+                                newLaneStr = "D1 (turned LEFT from C3)";
+                            }
+                            else if (destination == Destination::LEFT) {
+                                // CL2(left) → BL1
+                                lane = 'B';
+                                laneNumber = 1;
+                                currentDirection = Direction::LEFT;
+                                newLaneStr = "B1 (turned LEFT from C2)";
                             }
                             else {
-                                // Going straight to North
+                                // CL2(straight) → AL1
                                 lane = 'A';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on A1 (going STRAIGHT from C)");
+                                newLaneStr = "A1 (going STRAIGHT from C2)";
                             }
                             break;
 
                         case Direction::LEFT:  // From East (B)
-                            if (destination == Destination::LEFT) {
-                                lane = 'A';  // Go to North
-                                laneNumber = 1;
-                                currentDirection = Direction::DOWN;
-                                DebugLogger::log("Vehicle " + id + " now on A1 (turned LEFT from B)");
-                            }
-                            else if (destination == Destination::RIGHT) {
-                                lane = 'C';  // Go to South
+                            if (laneNumber == 3) {
+                                // BL3 → CL1
+                                lane = 'C';
                                 laneNumber = 1;
                                 currentDirection = Direction::UP;
-                                DebugLogger::log("Vehicle " + id + " now on C1 (turned RIGHT from B)");
+                                newLaneStr = "C1 (turned LEFT from B3)";
+                            }
+                            else if (destination == Destination::LEFT) {
+                                // BL2(left) → AL1
+                                lane = 'A';
+                                laneNumber = 1;
+                                currentDirection = Direction::DOWN;
+                                newLaneStr = "A1 (turned LEFT from B2)";
                             }
                             else {
-                                // Going straight to West
+                                // BL2(straight) → DL1
                                 lane = 'D';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on D1 (going STRAIGHT from B)");
+                                newLaneStr = "D1 (going STRAIGHT from B2)";
                             }
                             break;
 
                         case Direction::RIGHT: // From West (D)
-                            if (destination == Destination::LEFT) {
-                                lane = 'C';  // Go to South
-                                laneNumber = 1;
-                                currentDirection = Direction::UP;
-                                DebugLogger::log("Vehicle " + id + " now on C1 (turned LEFT from D)");
-                            }
-                            else if (destination == Destination::RIGHT) {
-                                lane = 'A';  // Go to North
+                            if (laneNumber == 3) {
+                                // DL3 → AL1
+                                lane = 'A';
                                 laneNumber = 1;
                                 currentDirection = Direction::DOWN;
-                                DebugLogger::log("Vehicle " + id + " now on A1 (turned RIGHT from D)");
+                                newLaneStr = "A1 (turned LEFT from D3)";
+                            }
+                            else if (destination == Destination::LEFT) {
+                                // DL2(left) → CL1
+                                lane = 'C';
+                                laneNumber = 1;
+                                currentDirection = Direction::UP;
+                                newLaneStr = "C1 (turned LEFT from D2)";
                             }
                             else {
-                                // Going straight to East
+                                // DL2(straight) → BL1
                                 lane = 'B';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on B1 (going STRAIGHT from D)");
+                                newLaneStr = "B1 (going STRAIGHT from D2)";
                             }
                             break;
                     }
+
+                    // Log lane change
+                    DebugLogger::log("Vehicle " + id + " now on " + newLaneStr);
                 }
+            }
+
+            // Adjust speed based on position and turn status
+            float adjustedSpeed = SPEED;
+
+            // Slower when approaching intersection
+            if (currentWaypoint == 1) {
+                adjustedSpeed *= 0.9f;
+            }
+            // Even slower in turning phase
+            else if (turning) {
+                adjustedSpeed *= 0.7f;
+            }
+            // Faster when exiting intersection
+            else if (currentWaypoint >= 3) {
+                adjustedSpeed *= 1.2f;
             }
 
             // Move toward next waypoint
@@ -592,9 +724,9 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
                 dx /= distance;
                 dy /= distance;
 
-                // Move toward waypoint
-                turnPosX += dx * SPEED;
-                turnPosY += dy * SPEED;
+                // Move toward waypoint with adjusted speed
+                turnPosX += dx * adjustedSpeed;
+                turnPosY += dy * adjustedSpeed;
 
                 // Update animation position
                 animPos = (currentDirection == Direction::UP || currentDirection == Direction::DOWN) ?
@@ -622,13 +754,13 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
         }
     }
     else {
-        // Red light - handle queue positioning
+        // Red light - handle queue positioning with deceleration
         if (currentWaypoint <= 1) {  // Vehicle is approaching or at the stop line
             // Get the stop line waypoint
             auto& stopLine = waypoints[1];
 
-            // Calculate target position based on queue position
-            float queueOffsetDistance = VEHICLE_SPACING * queuePos;
+            // Calculate target position based on queue position with improved spacing
+            float queueOffsetDistance = VEHICLE_SPACING * (queuePos + 0.2f); // Added small offset for better staggering
             float queueStopX = stopLine.x;
             float queueStopY = stopLine.y;
 
@@ -653,15 +785,22 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
             float dy = queueStopY - turnPosY;
             float distance = std::sqrt(dx*dx + dy*dy);
 
+            // Adjust speed based on distance (decelerate as approaching)
+            float adjustedSpeed = SPEED;
+            if (distance < 50.0f) {
+                // Slow down as approaching the stop position
+                adjustedSpeed *= (distance / 50.0f) + 0.2f;
+            }
+
             // Only move if far enough from target position (prevents jitter)
             if (distance > 2.0f) {
                 // Normalize direction
                 dx /= distance;
                 dy /= distance;
 
-                // Move toward queue position
-                turnPosX += dx * SPEED;
-                turnPosY += dy * SPEED;
+                // Move toward queue position with adjusted speed
+                turnPosX += dx * adjustedSpeed;
+                turnPosY += dy * adjustedSpeed;
 
                 // Update animation position
                 animPos = (currentDirection == Direction::UP || currentDirection == Direction::DOWN) ?
@@ -812,7 +951,7 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
     SDL_RenderRect(renderer, &vehicleRect);
 
     // STEP 5: Draw destination indicator - VERY CLEAR directional arrows
-    // This shows exactly where each vehicle is going - LEFT, RIGHT or STRAIGHT
+    // This shows exactly where each vehicle is going - LEFT or STRAIGHT
 
     if (destination == Destination::LEFT) {
         // LEFT TURN indicator - arrow pointing left relative to vehicle direction
@@ -855,47 +994,7 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
         // Draw triangle
         SDL_RenderFillTriangleF(renderer, arrow[0].x, arrow[0].y, arrow[1].x, arrow[1].y, arrow[2].x, arrow[2].y);
     }
-    else if (destination == Destination::RIGHT) {
-        // RIGHT TURN indicator - arrow pointing right relative to vehicle direction
-        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Bright yellow
-
-        SDL_FPoint arrow[3];
-        int arrowSize = 8;
-
-        switch (currentDirection) {
-            case Direction::DOWN: // From North (A)
-                // Draw on right side of vehicle
-                arrow[0] = {vehicleRect.x + vehicleRect.w, vehicleRect.y + vehicleRect.h/3};
-                arrow[1] = {vehicleRect.x + vehicleRect.w - arrowSize, vehicleRect.y + vehicleRect.h/3 - arrowSize/2};
-                arrow[2] = {vehicleRect.x + vehicleRect.w - arrowSize, vehicleRect.y + vehicleRect.h/3 + arrowSize/2};
-                break;
-
-            case Direction::UP: // From South (C)
-                // Draw on left side of vehicle
-                arrow[0] = {vehicleRect.x, vehicleRect.y + vehicleRect.h*2/3};
-                arrow[1] = {vehicleRect.x + arrowSize, vehicleRect.y + vehicleRect.h*2/3 - arrowSize/2};
-                arrow[2] = {vehicleRect.x + arrowSize, vehicleRect.y + vehicleRect.h*2/3 + arrowSize/2};
-                break;
-
-            case Direction::LEFT: // From East (B)
-                // Draw on right side of vehicle
-                arrow[0] = {vehicleRect.x + vehicleRect.w/3, vehicleRect.y + vehicleRect.h};
-                arrow[1] = {vehicleRect.x + vehicleRect.w/3 - arrowSize/2, vehicleRect.y + vehicleRect.h - arrowSize};
-                arrow[2] = {vehicleRect.x + vehicleRect.w/3 + arrowSize/2, vehicleRect.y + vehicleRect.h - arrowSize};
-                break;
-
-            case Direction::RIGHT: // From West (D)
-                // Draw on left side of vehicle
-                arrow[0] = {vehicleRect.x + vehicleRect.w*2/3, vehicleRect.y};
-                arrow[1] = {vehicleRect.x + vehicleRect.w*2/3 - arrowSize/2, vehicleRect.y + arrowSize};
-                arrow[2] = {vehicleRect.x + vehicleRect.w*2/3 + arrowSize/2, vehicleRect.y + arrowSize};
-                break;
-        }
-
-        // Draw triangle
-        SDL_RenderFillTriangleF(renderer, arrow[0].x, arrow[0].y, arrow[1].x, arrow[1].y, arrow[2].x, arrow[2].y);
-    }
-    else {
+    else if (destination == Destination::STRAIGHT) {
         // STRAIGHT indicator - double parallel lines
         SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Bright yellow
 
@@ -935,7 +1034,6 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
     }
 
     // STEP 6: Add lane number indicators as distinctive marks
-    // This makes it very clear which lane the vehicle is in
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White for indicators
 
     float dotSize = 4.0f; // Larger dots
@@ -1373,54 +1471,135 @@ bool TrafficLight::isGreen(char lane) const {
     }
 }
 
+// ENHANCED RENDERING METHODS
+
 void TrafficLight::render(SDL_Renderer* renderer) {
-    // Draw traffic light for each road
+    // Draw improved traffic light for each road with clearer visuals
     drawLightForA(renderer, !isGreen('A'));
     drawLightForB(renderer, !isGreen('B'));
     drawLightForC(renderer, !isGreen('C'));
     drawLightForD(renderer, !isGreen('D'));
 
-    // Priority mode indicator
+    // Enhanced priority mode indicator
     if (isPriorityMode) {
-        SDL_SetRenderDrawColor(renderer, 255, 165, 0, 255); // Orange
+        // Draw flashing priority mode indicator
+        uint32_t currentTime = SDL_GetTicks();
+        bool flashOn = (currentTime / 500) % 2 == 0; // Flash every 500ms
+
+        if (flashOn) {
+            SDL_SetRenderDrawColor(renderer, 255, 165, 0, 255); // Orange
+        } else {
+            SDL_SetRenderDrawColor(renderer, 255, 100, 0, 200); // Darker orange
+        }
+
         SDL_FRect priorityIndicator = {10, 10, 30, 30};
         SDL_RenderFillRect(renderer, &priorityIndicator);
 
         // Black border
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderRect(renderer, &priorityIndicator);
+
+        // Add "P" to the indicator
+        SDL_FRect vertLine = {20, 15, 3, 20};
+        SDL_FRect horizLine1 = {20, 15, 10, 3};
+        SDL_FRect horizLine2 = {20, 22, 8, 3};
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(renderer, &vertLine);
+        SDL_RenderFillRect(renderer, &horizLine1);
+        SDL_RenderFillRect(renderer, &horizLine2);
     }
 }
 
 void TrafficLight::drawLightForA(SDL_Renderer* renderer, bool isRed) {
     const int LIGHT_SIZE = 20;
-    const int LIGHT_BOX_WIDTH = 25;
-    const int LIGHT_BOX_HEIGHT = 60;
+    const int LIGHT_BOX_WIDTH = 40;
+    const int LIGHT_BOX_HEIGHT = 80;
     const int WINDOW_WIDTH = 800;
     const int WINDOW_HEIGHT = 800;
+    const int ARROW_SIZE = 10;
 
-    // Position for road A
+    // Position for road A - move slightly for better visibility
     int x = WINDOW_WIDTH/2 + 40;
     int y = WINDOW_HEIGHT/2 - 120;
 
-    // Traffic light box
-    SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Dark gray
+    // Enhanced traffic light box with 3D effect
+    // Shadow
+    SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
+    SDL_FRect shadowBox = {(float)x + 3, (float)y + 3, LIGHT_BOX_WIDTH, LIGHT_BOX_HEIGHT};
+    SDL_RenderFillRect(renderer, &shadowBox);
+
+    // Main box (dark gray)
+    SDL_SetRenderDrawColor(renderer, 70, 70, 70, 255);
     SDL_FRect lightBox = {(float)x, (float)y, LIGHT_BOX_WIDTH, LIGHT_BOX_HEIGHT};
     SDL_RenderFillRect(renderer, &lightBox);
+
+    // Highlight edge
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+    SDL_FRect highlight = {(float)x, (float)y, LIGHT_BOX_WIDTH, 2.0f};
+    SDL_RenderFillRect(renderer, &highlight);
+    SDL_FRect highlightSide = {(float)x, (float)y, 2.0f, LIGHT_BOX_HEIGHT};
+    SDL_RenderFillRect(renderer, &highlightSide);
 
     // Black border
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderRect(renderer, &lightBox);
 
-    // Red light
-    SDL_SetRenderDrawColor(renderer, isRed ? 255 : 80, 0, 0, 255);
-    SDL_FRect redLight = {(float)(x + 2.5), (float)(y + 5), LIGHT_SIZE, LIGHT_SIZE};
+    // Red light with glow effect
+    if (isRed) {
+        // Glow
+        SDL_SetRenderDrawColor(renderer, 150, 0, 0, 100);
+        SDL_FRect redGlow = {(float)(x + LIGHT_BOX_WIDTH/2 - LIGHT_SIZE/2 - 3), (float)(y + 10 - 3),
+                             LIGHT_SIZE + 6, LIGHT_SIZE + 6};
+        SDL_RenderFillRect(renderer, &redGlow);
+    }
+
+    SDL_SetRenderDrawColor(renderer, isRed ? 255 : 50, 0, 0, 255);
+    SDL_FRect redLight = {(float)(x + LIGHT_BOX_WIDTH/2 - LIGHT_SIZE/2), (float)(y + 10),
+                         LIGHT_SIZE, LIGHT_SIZE};
     SDL_RenderFillRect(renderer, &redLight);
 
-    // Green light
-    SDL_SetRenderDrawColor(renderer, 0, isRed ? 80 : 255, 0, 255);
-    SDL_FRect greenLight = {(float)(x + 2.5), (float)(y + 35), LIGHT_SIZE, LIGHT_SIZE};
+    // Green light with glow effect
+    if (!isRed) {
+        // Glow
+        SDL_SetRenderDrawColor(renderer, 0, 150, 0, 100);
+        SDL_FRect greenGlow = {(float)(x + LIGHT_BOX_WIDTH/2 - LIGHT_SIZE/2 - 3), (float)(y + 40 - 3),
+                              LIGHT_SIZE + 6, LIGHT_SIZE + 6};
+        SDL_RenderFillRect(renderer, &greenGlow);
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0, isRed ? 50 : 255, 0, 255);
+    SDL_FRect greenLight = {(float)(x + LIGHT_BOX_WIDTH/2 - LIGHT_SIZE/2), (float)(y + 40),
+                           LIGHT_SIZE, LIGHT_SIZE};
     SDL_RenderFillRect(renderer, &greenLight);
+
+    // Add straight arrow for green light
+    if (!isRed) {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+        // Draw arrow shape
+        SDL_FRect arrowStem = {(float)(x + LIGHT_BOX_WIDTH/2 - 2), (float)(y + 50 - ARROW_SIZE/2),
+                              4.0f, (float)ARROW_SIZE};
+        SDL_RenderFillRect(renderer, &arrowStem);
+
+        // Arrow head (triangle)
+        SDL_Vertex vertices[3];
+        SDL_FColor white = {1.0f, 1.0f, 1.0f, 1.0f};
+
+        vertices[0].position.x = x + LIGHT_BOX_WIDTH/2;
+        vertices[0].position.y = y + 50 - ARROW_SIZE/2 - 5;
+        vertices[0].color = white;
+
+        vertices[1].position.x = x + LIGHT_BOX_WIDTH/2 - 5;
+        vertices[1].position.y = y + 50 - ARROW_SIZE/2;
+        vertices[1].color = white;
+
+        vertices[2].position.x = x + LIGHT_BOX_WIDTH/2 + 5;
+        vertices[2].position.y = y + 50 - ARROW_SIZE/2;
+        vertices[2].color = white;
+
+        SDL_RenderGeometry(renderer, NULL, vertices, 3, NULL, 0);
+    }
 
     // Black borders around lights
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -1430,33 +1609,93 @@ void TrafficLight::drawLightForA(SDL_Renderer* renderer, bool isRed) {
 
 void TrafficLight::drawLightForB(SDL_Renderer* renderer, bool isRed) {
     const int LIGHT_SIZE = 20;
-    const int LIGHT_BOX_WIDTH = 25;
-    const int LIGHT_BOX_HEIGHT = 60;
+    const int LIGHT_BOX_WIDTH = 80;
+    const int LIGHT_BOX_HEIGHT = 40;
     const int WINDOW_WIDTH = 800;
     const int WINDOW_HEIGHT = 800;
+    const int ARROW_SIZE = 10;
 
     // Position for road B
-    int x = WINDOW_WIDTH/2 - 65;
-    int y = WINDOW_HEIGHT/2 + 60;
+    int x = WINDOW_WIDTH/2 - 60;
+    int y = WINDOW_HEIGHT/2 + 40;
 
-    // Traffic light box
-    SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Dark gray
+    // Enhanced traffic light box with 3D effect
+    // Shadow
+    SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
+    SDL_FRect shadowBox = {(float)x + 3, (float)y + 3, LIGHT_BOX_WIDTH, LIGHT_BOX_HEIGHT};
+    SDL_RenderFillRect(renderer, &shadowBox);
+
+    // Main box (dark gray)
+    SDL_SetRenderDrawColor(renderer, 70, 70, 70, 255);
     SDL_FRect lightBox = {(float)x, (float)y, LIGHT_BOX_WIDTH, LIGHT_BOX_HEIGHT};
     SDL_RenderFillRect(renderer, &lightBox);
+
+    // Highlight edge
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+    SDL_FRect highlight = {(float)x, (float)y, LIGHT_BOX_WIDTH, 2.0f};
+    SDL_RenderFillRect(renderer, &highlight);
+    SDL_FRect highlightSide = {(float)x, (float)y, 2.0f, LIGHT_BOX_HEIGHT};
+    SDL_RenderFillRect(renderer, &highlightSide);
 
     // Black border
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderRect(renderer, &lightBox);
 
-    // Red light
-    SDL_SetRenderDrawColor(renderer, isRed ? 255 : 80, 0, 0, 255);
-    SDL_FRect redLight = {(float)(x + 2.5), (float)(y + 5), LIGHT_SIZE, LIGHT_SIZE};
+    // Red light with glow effect
+    if (isRed) {
+        // Glow
+        SDL_SetRenderDrawColor(renderer, 150, 0, 0, 100);
+        SDL_FRect redGlow = {(float)(x + 10 - 3), (float)(y + LIGHT_BOX_HEIGHT/2 - LIGHT_SIZE/2 - 3),
+                            LIGHT_SIZE + 6, LIGHT_SIZE + 6};
+        SDL_RenderFillRect(renderer, &redGlow);
+    }
+
+    SDL_SetRenderDrawColor(renderer, isRed ? 255 : 50, 0, 0, 255);
+    SDL_FRect redLight = {(float)(x + 10), (float)(y + LIGHT_BOX_HEIGHT/2 - LIGHT_SIZE/2),
+                         LIGHT_SIZE, LIGHT_SIZE};
     SDL_RenderFillRect(renderer, &redLight);
 
-    // Green light
-    SDL_SetRenderDrawColor(renderer, 0, isRed ? 80 : 255, 0, 255);
-    SDL_FRect greenLight = {(float)(x + 2.5), (float)(y + 35), LIGHT_SIZE, LIGHT_SIZE};
+    // Green light with glow effect
+    if (!isRed) {
+        // Glow
+        SDL_SetRenderDrawColor(renderer, 0, 150, 0, 100);
+        SDL_FRect greenGlow = {(float)(x + 40 - 3), (float)(y + LIGHT_BOX_HEIGHT/2 - LIGHT_SIZE/2 - 3),
+                              LIGHT_SIZE + 6, LIGHT_SIZE + 6};
+        SDL_RenderFillRect(renderer, &greenGlow);
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0, isRed ? 50 : 255, 0, 255);
+    SDL_FRect greenLight = {(float)(x + 40), (float)(y + LIGHT_BOX_HEIGHT/2 - LIGHT_SIZE/2),
+                           LIGHT_SIZE, LIGHT_SIZE};
     SDL_RenderFillRect(renderer, &greenLight);
+
+    // Add straight arrow for green light
+    if (!isRed) {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+        // Draw arrow shape (horizontal)
+        SDL_FRect arrowStem = {(float)(x + 50 - ARROW_SIZE/2), (float)(y + LIGHT_BOX_HEIGHT/2 - 2),
+                              (float)ARROW_SIZE, 4.0f};
+        SDL_RenderFillRect(renderer, &arrowStem);
+
+        // Arrow head (triangle)
+        SDL_Vertex vertices[3];
+        SDL_FColor white = {1.0f, 1.0f, 1.0f, 1.0f};
+
+        vertices[0].position.x = x + 50 - ARROW_SIZE/2 - 5;
+        vertices[0].position.y = y + LIGHT_BOX_HEIGHT/2;
+        vertices[0].color = white;
+
+        vertices[1].position.x = x + 50 - ARROW_SIZE/2;
+        vertices[1].position.y = y + LIGHT_BOX_HEIGHT/2 - 5;
+        vertices[1].color = white;
+
+        vertices[2].position.x = x + 50 - ARROW_SIZE/2;
+        vertices[2].position.y = y + LIGHT_BOX_HEIGHT/2 + 5;
+        vertices[2].color = white;
+
+        SDL_RenderGeometry(renderer, NULL, vertices, 3, NULL, 0);
+    }
 
     // Black borders around lights
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -1466,33 +1705,93 @@ void TrafficLight::drawLightForB(SDL_Renderer* renderer, bool isRed) {
 
 void TrafficLight::drawLightForC(SDL_Renderer* renderer, bool isRed) {
     const int LIGHT_SIZE = 20;
-    const int LIGHT_BOX_WIDTH = 60;
-    const int LIGHT_BOX_HEIGHT = 25;
+    const int LIGHT_BOX_WIDTH = 40;
+    const int LIGHT_BOX_HEIGHT = 80;
     const int WINDOW_WIDTH = 800;
     const int WINDOW_HEIGHT = 800;
+    const int ARROW_SIZE = 10;
 
-    // Position for road C
-    int x = WINDOW_WIDTH/2 + 60;
-    int y = WINDOW_HEIGHT/2 - 65;
+    // Position for road C - move slightly for better visibility
+    int x = WINDOW_WIDTH/2 - 80;
+    int y = WINDOW_HEIGHT/2 + 40;
 
-    // Traffic light box
-    SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Dark gray
+    // Enhanced traffic light box with 3D effect
+    // Shadow
+    SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
+    SDL_FRect shadowBox = {(float)x + 3, (float)y + 3, LIGHT_BOX_WIDTH, LIGHT_BOX_HEIGHT};
+    SDL_RenderFillRect(renderer, &shadowBox);
+
+    // Main box (dark gray)
+    SDL_SetRenderDrawColor(renderer, 70, 70, 70, 255);
     SDL_FRect lightBox = {(float)x, (float)y, LIGHT_BOX_WIDTH, LIGHT_BOX_HEIGHT};
     SDL_RenderFillRect(renderer, &lightBox);
+
+    // Highlight edge
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+    SDL_FRect highlight = {(float)x, (float)y, LIGHT_BOX_WIDTH, 2.0f};
+    SDL_RenderFillRect(renderer, &highlight);
+    SDL_FRect highlightSide = {(float)x, (float)y, 2.0f, LIGHT_BOX_HEIGHT};
+    SDL_RenderFillRect(renderer, &highlightSide);
 
     // Black border
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderRect(renderer, &lightBox);
 
-    // Red light
-    SDL_SetRenderDrawColor(renderer, isRed ? 255 : 80, 0, 0, 255);
-    SDL_FRect redLight = {(float)(x + 5), (float)(y + 2.5), LIGHT_SIZE, LIGHT_SIZE};
+    // Red light with glow effect
+    if (isRed) {
+        // Glow
+        SDL_SetRenderDrawColor(renderer, 150, 0, 0, 100);
+        SDL_FRect redGlow = {(float)(x + LIGHT_BOX_WIDTH/2 - LIGHT_SIZE/2 - 3), (float)(y + 10 - 3),
+                             LIGHT_SIZE + 6, LIGHT_SIZE + 6};
+        SDL_RenderFillRect(renderer, &redGlow);
+    }
+
+    SDL_SetRenderDrawColor(renderer, isRed ? 255 : 50, 0, 0, 255);
+    SDL_FRect redLight = {(float)(x + LIGHT_BOX_WIDTH/2 - LIGHT_SIZE/2), (float)(y + 10),
+                         LIGHT_SIZE, LIGHT_SIZE};
     SDL_RenderFillRect(renderer, &redLight);
 
-    // Green light
-    SDL_SetRenderDrawColor(renderer, 0, isRed ? 80 : 255, 0, 255);
-    SDL_FRect greenLight = {(float)(x + 35), (float)(y + 2.5), LIGHT_SIZE, LIGHT_SIZE};
+    // Green light with glow effect
+    if (!isRed) {
+        // Glow
+        SDL_SetRenderDrawColor(renderer, 0, 150, 0, 100);
+        SDL_FRect greenGlow = {(float)(x + LIGHT_BOX_WIDTH/2 - LIGHT_SIZE/2 - 3), (float)(y + 40 - 3),
+                              LIGHT_SIZE + 6, LIGHT_SIZE + 6};
+        SDL_RenderFillRect(renderer, &greenGlow);
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0, isRed ? 50 : 255, 0, 255);
+    SDL_FRect greenLight = {(float)(x + LIGHT_BOX_WIDTH/2 - LIGHT_SIZE/2), (float)(y + 40),
+                           LIGHT_SIZE, LIGHT_SIZE};
     SDL_RenderFillRect(renderer, &greenLight);
+
+    // Add straight arrow for green light (pointing upward)
+    if (!isRed) {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+        // Draw arrow shape
+        SDL_FRect arrowStem = {(float)(x + LIGHT_BOX_WIDTH/2 - 2), (float)(y + 50 - ARROW_SIZE/2),
+                              4.0f, (float)ARROW_SIZE};
+        SDL_RenderFillRect(renderer, &arrowStem);
+
+        // Arrow head (triangle)
+        SDL_Vertex vertices[3];
+        SDL_FColor white = {1.0f, 1.0f, 1.0f, 1.0f};
+
+        vertices[0].position.x = x + LIGHT_BOX_WIDTH/2;
+        vertices[0].position.y = y + 50 - ARROW_SIZE/2 - 5;
+        vertices[0].color = white;
+
+        vertices[1].position.x = x + LIGHT_BOX_WIDTH/2 - 5;
+        vertices[1].position.y = y + 50 - ARROW_SIZE/2;
+        vertices[1].color = white;
+
+        vertices[2].position.x = x + LIGHT_BOX_WIDTH/2 + 5;
+        vertices[2].position.y = y + 50 - ARROW_SIZE/2;
+        vertices[2].color = white;
+
+        SDL_RenderGeometry(renderer, NULL, vertices, 3, NULL, 0);
+    }
 
     // Black borders around lights
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -1502,33 +1801,93 @@ void TrafficLight::drawLightForC(SDL_Renderer* renderer, bool isRed) {
 
 void TrafficLight::drawLightForD(SDL_Renderer* renderer, bool isRed) {
     const int LIGHT_SIZE = 20;
-    const int LIGHT_BOX_WIDTH = 60;
-    const int LIGHT_BOX_HEIGHT = 25;
+    const int LIGHT_BOX_WIDTH = 80;
+    const int LIGHT_BOX_HEIGHT = 40;
     const int WINDOW_WIDTH = 800;
     const int WINDOW_HEIGHT = 800;
+    const int ARROW_SIZE = 10;
 
     // Position for road D
     int x = WINDOW_WIDTH/2 - 120;
-    int y = WINDOW_HEIGHT/2 + 40;
+    int y = WINDOW_HEIGHT/2 - 80;
 
-    // Traffic light box
-    SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255); // Dark gray
+    // Enhanced traffic light box with 3D effect
+    // Shadow
+    SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
+    SDL_FRect shadowBox = {(float)x + 3, (float)y + 3, LIGHT_BOX_WIDTH, LIGHT_BOX_HEIGHT};
+    SDL_RenderFillRect(renderer, &shadowBox);
+
+    // Main box (dark gray)
+    SDL_SetRenderDrawColor(renderer, 70, 70, 70, 255);
     SDL_FRect lightBox = {(float)x, (float)y, LIGHT_BOX_WIDTH, LIGHT_BOX_HEIGHT};
     SDL_RenderFillRect(renderer, &lightBox);
+
+    // Highlight edge
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+    SDL_FRect highlight = {(float)x, (float)y, LIGHT_BOX_WIDTH, 2.0f};
+    SDL_RenderFillRect(renderer, &highlight);
+    SDL_FRect highlightSide = {(float)x, (float)y, 2.0f, LIGHT_BOX_HEIGHT};
+    SDL_RenderFillRect(renderer, &highlightSide);
 
     // Black border
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderRect(renderer, &lightBox);
 
-    // Red light
-    SDL_SetRenderDrawColor(renderer, isRed ? 255 : 80, 0, 0, 255);
-    SDL_FRect redLight = {(float)(x + 5), (float)(y + 2.5), LIGHT_SIZE, LIGHT_SIZE};
+    // Red light with glow effect
+    if (isRed) {
+        // Glow
+        SDL_SetRenderDrawColor(renderer, 150, 0, 0, 100);
+        SDL_FRect redGlow = {(float)(x + 10 - 3), (float)(y + LIGHT_BOX_HEIGHT/2 - LIGHT_SIZE/2 - 3),
+                            LIGHT_SIZE + 6, LIGHT_SIZE + 6};
+        SDL_RenderFillRect(renderer, &redGlow);
+    }
+
+    SDL_SetRenderDrawColor(renderer, isRed ? 255 : 50, 0, 0, 255);
+    SDL_FRect redLight = {(float)(x + 10), (float)(y + LIGHT_BOX_HEIGHT/2 - LIGHT_SIZE/2),
+                         LIGHT_SIZE, LIGHT_SIZE};
     SDL_RenderFillRect(renderer, &redLight);
 
-    // Green light
-    SDL_SetRenderDrawColor(renderer, 0, isRed ? 80 : 255, 0, 255);
-    SDL_FRect greenLight = {(float)(x + 35), (float)(y + 2.5), LIGHT_SIZE, LIGHT_SIZE};
+    // Green light with glow effect
+    if (!isRed) {
+        // Glow
+        SDL_SetRenderDrawColor(renderer, 0, 150, 0, 100);
+        SDL_FRect greenGlow = {(float)(x + 40 - 3), (float)(y + LIGHT_BOX_HEIGHT/2 - LIGHT_SIZE/2 - 3),
+                              LIGHT_SIZE + 6, LIGHT_SIZE + 6};
+        SDL_RenderFillRect(renderer, &greenGlow);
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0, isRed ? 50 : 255, 0, 255);
+    SDL_FRect greenLight = {(float)(x + 40), (float)(y + LIGHT_BOX_HEIGHT/2 - LIGHT_SIZE/2),
+                           LIGHT_SIZE, LIGHT_SIZE};
     SDL_RenderFillRect(renderer, &greenLight);
+
+    // Add straight arrow for green light (horizontal pointing right)
+    if (!isRed) {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+        // Draw arrow shape
+        SDL_FRect arrowStem = {(float)(x + 50 - ARROW_SIZE/2), (float)(y + LIGHT_BOX_HEIGHT/2 - 2),
+                              (float)ARROW_SIZE, 4.0f};
+        SDL_RenderFillRect(renderer, &arrowStem);
+
+        // Arrow head (triangle)
+        SDL_Vertex vertices[3];
+        SDL_FColor white = {1.0f, 1.0f, 1.0f, 1.0f};
+
+        vertices[0].position.x = x + 50 + ARROW_SIZE/2 + 5;
+        vertices[0].position.y = y + LIGHT_BOX_HEIGHT/2;
+        vertices[0].color = white;
+
+        vertices[1].position.x = x + 50 + ARROW_SIZE/2;
+        vertices[1].position.y = y + LIGHT_BOX_HEIGHT/2 - 5;
+        vertices[1].color = white;
+
+        vertices[2].position.x = x + 50 + ARROW_SIZE/2;
+        vertices[2].position.y = y + LIGHT_BOX_HEIGHT/2 + 5;
+        vertices[2].color = white;
+
+        SDL_RenderGeometry(renderer, NULL, vertices, 3, NULL, 0);
+    }
 
     // Black borders around lights
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -1703,6 +2062,12 @@ Vehicle* FileHandler::parseVehicleLine(const std::string& line) {
         }
     }
 
+    // Don't spawn vehicles in Lane 1 (L1)
+    if (laneNumber == 1) {
+        DebugLogger::log("Ignoring vehicle in Lane 1: " + line, DebugLogger::LogLevel::WARNING);
+        return nullptr;
+    }
+
     // Determine direction from ID - important for vehicle behavior
     Destination destination = Destination::STRAIGHT; // Default
 
@@ -1711,10 +2076,10 @@ Vehicle* FileHandler::parseVehicleLine(const std::string& line) {
         destination = Destination::LEFT;
     } else if (laneNumber == 2) {
         // Check for direction in ID
-        if (vehicleId.find("_RIGHT") != std::string::npos) {
-            destination = Destination::RIGHT;
-        } else if (vehicleId.find("_LEFT") != std::string::npos) {
+        if (vehicleId.find("_LEFT") != std::string::npos) {
             destination = Destination::LEFT;
+        } else if (vehicleId.find("_STRAIGHT") != std::string::npos) {
+            destination = Destination::STRAIGHT;
         } else {
             // Default for L2 if not specified is STRAIGHT
             destination = Destination::STRAIGHT;
@@ -1863,6 +2228,7 @@ std::string FileHandler::getLaneStatusFilePath() const {
 #include "utils/DebugLogger.h"
 #include <sstream>
 #include <algorithm>
+#include <wchar.h>
 #include "core/Constants.h"
 
 TrafficManager::TrafficManager()
@@ -1940,19 +2306,25 @@ void TrafficManager::update(uint32_t delta) {
     uint32_t currentTime = SDL_GetTicks();
 
     // Check for new vehicles more frequently (every 200ms)
-    if (currentTime - lastFileCheckTime >= 200) { // 5 times per second
+    if (currentTime - lastFileCheckTime >= 200) {
         readVehicles();
         lastFileCheckTime = currentTime;
     }
 
     // Update lane priorities regularly
-    if (currentTime - lastPriorityUpdateTime >= 300) { // Every 300ms
+    if (currentTime - lastPriorityUpdateTime >= 300) {
         updatePriorities();
         lastPriorityUpdateTime = currentTime;
     }
 
+    // NEW: Limit vehicles per lane to prevent overcrowding
+    limitVehiclesPerLane();
+
     // Process vehicles based on traffic light state
     processVehicles(delta);
+
+    // NEW: Prevent vehicles from overlapping
+    preventVehicleOverlap();
 
     // Check for vehicles leaving the simulation
     checkVehicleBoundaries();
@@ -2180,6 +2552,99 @@ std::string TrafficManager::getStatistics() const {
     }
 
     return stats.str();
+}
+
+
+void TrafficManager::limitVehiclesPerLane() {
+    const int MAX_VEHICLES_PER_LANE = 12; // Maximum vehicles allowed in a single lane
+
+    for (auto* lane : lanes) {
+        int count = lane->getVehicleCount();
+
+        // If lane has too many vehicles, remove some from the end (farthest from intersection)
+        if (count > MAX_VEHICLES_PER_LANE) {
+            int toRemove = count - MAX_VEHICLES_PER_LANE;
+
+            DebugLogger::log("Lane " + lane->getName() + " has " + std::to_string(count) +
+                           " vehicles (max " + std::to_string(MAX_VEHICLES_PER_LANE) +
+                           ") - removing " + std::to_string(toRemove),
+                           DebugLogger::LogLevel::WARNING);
+
+            // Get all vehicles
+            const auto& vehicles = lane->getVehicles();
+
+            // Remove vehicles starting from the end of the queue (furthest from intersection)
+            for (int i = 0; i < toRemove && !lane->isEmpty(); i++) {
+                // We have to dequeue all vehicles and re-enqueue except the last one
+                std::vector<Vehicle*> tempVehicles;
+                int keepCount = count - (i + 1);
+
+                // Dequeue all vehicles except the one to remove
+                for (int j = 0; j < keepCount; j++) {
+                    if (!lane->isEmpty()) {
+                        Vehicle* v = lane->dequeue();
+                        if (v) {
+                            tempVehicles.push_back(v);
+                        }
+                    }
+                }
+
+                // Now remove the target vehicle
+                if (!lane->isEmpty()) {
+                    Vehicle* toDelete = lane->dequeue();
+                    if (toDelete) {
+                        delete toDelete;
+                    }
+                }
+
+                // Re-enqueue the kept vehicles
+                for (auto* v : tempVehicles) {
+                    lane->enqueue(v);
+                }
+            }
+        }
+    }
+}
+
+
+
+void TrafficManager::preventVehicleOverlap() {
+    // For each lane, check for vehicles that are too close to each other
+    for (auto* lane : lanes) {
+        const auto& vehicles = lane->getVehicles();
+
+        // Skip if fewer than 2 vehicles
+        if (vehicles.size() < 2) continue;
+
+        // Check each vehicle against others in the lane
+        for (size_t i = 0; i < vehicles.size() - 1; i++) {
+            Vehicle* current = vehicles[i];
+            Vehicle* next = vehicles[i+1];
+
+            if (!current || !next) continue;
+
+            // Calculate distance between vehicles
+            float dx = current->getTurnPosX() - next->getTurnPosX();
+            float dy = current->getTurnPosY() - next->getTurnPosY();
+            float distance = std::sqrt(dx*dx + dy*dy);
+
+            // Minimum distance between vehicles
+            const float MIN_DISTANCE = 35.0f;
+
+            // If too close, adjust next vehicle position
+            if (distance < MIN_DISTANCE) {
+                // Normalize direction vector
+                float normalize = distance > 0 ? distance : 1.0f;
+                dx /= normalize;
+                dy /= normalize;
+
+                // Move next vehicle back to maintain spacing
+                float moveDistance = MIN_DISTANCE - distance;
+                next->setTurnPosX(next->getTurnPosX() - dx * moveDistance);
+                next->setTurnPosY(next->getTurnPosY() - dy * moveDistance);
+            }
+        }
+    }
 }
 
 
@@ -3659,7 +4124,7 @@ int main(int argc, char* argv[]) {
 
 //===== FILE: src/traffic_generator.cpp =====//
 
-// FILE: src/traffic_generator.cpp
+// F// FILE: src/traffic_generator.cpp
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -3673,7 +4138,7 @@ int main(int argc, char* argv[]) {
 #include <iomanip>
 #include <atomic>
 #include <csignal>
-#include <map>  // Added missing map header
+#include <map>
 
 // Include Windows-specific headers if on Windows
 #ifdef _WIN32
@@ -3683,10 +4148,11 @@ int main(int argc, char* argv[]) {
 // Namespaces
 namespace fs = std::filesystem;
 
-// Constants for the generator
+// Constants for the generator - MODIFIED VALUES HERE
 const std::string DATA_DIR = "data/lanes";
-const int GENERATION_INTERVAL_MS = 800;
-const int MAX_VEHICLES_PER_BATCH = 50;
+const int GENERATION_INTERVAL_MS = 2000;  // Increased from 800ms to 2000ms
+const int MAX_VEHICLES_PER_BATCH = 30;    // Reduced from 50 to 30
+const int MAX_TOTAL_VEHICLES = 60;        // New: Global limit
 const int PRIORITY_THRESHOLD_HIGH = 10;
 const int PRIORITY_THRESHOLD_LOW = 5;
 
@@ -3742,13 +4208,13 @@ void ensure_directories() {
     }
 }
 
-// Write a vehicle to lane file
+// Write a vehicle to lane file with updated turn directions
 void write_vehicle(const std::string& id, char lane, int laneNumber, Direction dir = Direction::LEFT) {
     static std::mutex fileMutex;
     std::lock_guard<std::mutex> lock(fileMutex);
 
-    // Skip invalid lane numbers
-    if (laneNumber < 1 || laneNumber > 3) {
+    // Skip invalid lane numbers and Lane 1 (shouldn't spawn here)
+    if (laneNumber < 1 || laneNumber > 3 || laneNumber == 1) {
         return;
     }
 
@@ -3764,14 +4230,12 @@ void write_vehicle(const std::string& id, char lane, int laneNumber, Direction d
             // Lane 3 always turns left
             file << "_LEFT";
         } else if (laneNumber == 2) {
-            // Lane 2 can go straight or right
+            // Lane 2 can go straight or left (changed from right to left)
             if (dir == Direction::STRAIGHT) {
                 file << "_STRAIGHT";
             } else {
-                file << "_RIGHT";
+                file << "_LEFT"; // Changed from _RIGHT to _LEFT
             }
-        } else if (laneNumber == 1) {
-            // Lane 1 is incoming lane - no special handling needed
         }
 
         file << ":" << lane << std::endl;
@@ -3786,12 +4250,10 @@ void write_vehicle(const std::string& id, char lane, int laneNumber, Direction d
             dirStr = " (LEFT turn)";
         } else if (laneNumber == 2 && lane == 'A') {
             color = "\033[1;33m"; // Yellow for priority lane
-            dirStr = (dir == Direction::STRAIGHT) ? " (STRAIGHT)" : " (RIGHT turn)";
+            dirStr = (dir == Direction::STRAIGHT) ? " (STRAIGHT)" : " (LEFT turn)";
         } else if (laneNumber == 2) {
             color = "\033[1;37m"; // White for normal lane 2
-            dirStr = (dir == Direction::STRAIGHT) ? " (STRAIGHT)" : " (RIGHT turn)";
-        } else {
-            color = "\033[1;36m"; // Cyan for lane 1
+            dirStr = (dir == Direction::STRAIGHT) ? " (STRAIGHT)" : " (LEFT turn)";
         }
 
         console_log("Added " + id + " to lane " + lane + std::to_string(laneNumber) + dirStr, color);
@@ -3808,19 +4270,19 @@ char random_lane() {
     return 'A' + dist(gen);
 }
 
-// Generate a lane number with improved distribution (1, 2, or 3)
+// Generate a lane number - only Lane 2 or 3 (never Lane 1)
 int random_lane_number() {
     static std::random_device rd;
     static std::mt19937 gen(rd());
 
-    // Improved distribution: 20% lane 1, 50% lane 2, 30% lane 3
-    std::vector<double> weights = {0.2, 0.5, 0.3};
+    // Only generate Lane 2 (60%) or Lane 3 (40%) - never Lane 1
+    std::vector<double> weights = {0.0, 0.6, 0.4}; // Weights for lanes 1, 2, 3
     std::discrete_distribution<int> dist(weights.begin(), weights.end());
 
-    return dist(gen) + 1; // Returns 1, 2, or 3
+    return dist(gen) + 1; // Returns 2 or 3
 }
 
-// Generate direction (straight, left, right) based on lane rules
+// Generate direction (LEFT or STRAIGHT) based on lane rules
 Direction random_direction(int laneNumber) {
     static std::random_device rd;
     static std::mt19937 gen(rd());
@@ -3829,12 +4291,12 @@ Direction random_direction(int laneNumber) {
         // Lane 3 always goes left
         return Direction::LEFT;
     } else if (laneNumber == 2) {
-        // Lane 2 can go straight (60%) or right (40%)
-        std::vector<double> weights = {0.0, 0.6, 0.4}; // [LEFT, STRAIGHT, RIGHT]
+        // Lane 2 can go straight (60%) or left (40%) - changed from right to left
+        std::vector<double> weights = {0.4, 0.6, 0.0}; // [LEFT, STRAIGHT, RIGHT]
         std::discrete_distribution<int> dist(weights.begin(), weights.end());
         return static_cast<Direction>(dist(gen));
     } else {
-        // Lane 1 is incoming lane
+        // Lane 1 is incoming lane (shouldn't generate vehicles)
         return Direction::STRAIGHT;
     }
 }
@@ -3967,8 +4429,8 @@ int main() {
         for (int i = 0; i < 12 && keepRunning; i++) {
             std::string id = "V" + std::to_string(total_vehicles + 1);
 
-            // Alternate between straight and right turns for lane A2
-            Direction dir = (i % 2 == 0) ? Direction::STRAIGHT : Direction::RIGHT;
+            // Alternate between straight and left turns for lane A2
+            Direction dir = (i % 2 == 0) ? Direction::STRAIGHT : Direction::LEFT;
             write_vehicle(id, 'A', 2, dir); // Lane A2 with direction
 
             total_vehicles++;
@@ -3998,38 +4460,59 @@ int main() {
 
         // Continuous generation until terminated
         while (keepRunning) {
-            char lane = random_lane();
-            int lane_num = random_lane_number();
-            Direction dir = random_direction(lane_num);
+            // NEW: Check total vehicle count before generating more
+            auto counts = count_vehicles_in_lanes();
+            int totalVehiclesInSystem = 0;
 
-            // For testing priority condition, occasionally bias toward lane A2
-            if (gen() % 10 == 0) {
-                lane = 'A';
-                lane_num = 2;
-                dir = (gen() % 2 == 0) ? Direction::STRAIGHT : Direction::RIGHT;
+            for (char lane = 'A'; lane <= 'D'; lane++) {
+                for (int i = 1; i <= 3; i++) {
+                    std::string laneKey = std::string(1, lane) + std::to_string(i);
+                    totalVehiclesInSystem += counts[laneKey];
+                }
             }
 
-            // Also ensure good distribution for lane 3 (free lane)
-            if (gen() % 15 == 0) {
-                lane = random_lane();
-                lane_num = 3; // Force lane 3 (free lane)
-                dir = Direction::LEFT; // Lane 3 always turns left
+            // Only generate new vehicles if below the maximum limit
+            if (totalVehiclesInSystem < MAX_TOTAL_VEHICLES) {
+                char lane = random_lane();
+                int lane_num = random_lane_number(); // Will only return 2 or 3
+                Direction dir = random_direction(lane_num);
+
+                // For testing priority condition, occasionally bias toward lane A2
+                if (gen() % 10 == 0) {
+                    lane = 'A';
+                    lane_num = 2;
+                    dir = (gen() % 2 == 0) ? Direction::STRAIGHT : Direction::LEFT;
+                }
+
+                // Also ensure good distribution for lane 3 (free lane)
+                if (gen() % 15 == 0) {
+                    lane = random_lane();
+                    lane_num = 3; // Force lane 3 (free lane)
+                    dir = Direction::LEFT; // Lane 3 always turns left
+                }
+
+                std::string id = "V" + std::to_string(total_vehicles + 1);
+
+                // Write vehicle to file with appropriate direction
+                write_vehicle(id, lane, lane_num, dir);
+
+                // Update counters
+                total_vehicles++;
+                current_batch++;
+                if (lane == 'A' && lane_num == 2) {
+                    a2_count++;
+                }
+
+                // Display progress
+                display_status(current_batch, MAX_VEHICLES_PER_BATCH, a2_count);
+            } else {
+                // Skip generation this cycle and wait for vehicles to clear
+                console_log("Vehicle limit reached (" + std::to_string(totalVehiclesInSystem) +
+                          "/" + std::to_string(MAX_TOTAL_VEHICLES) + ") - waiting", "\033[1;33m");
+
+                // Wait longer between generation attempts when system is full
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             }
-
-            std::string id = "V" + std::to_string(total_vehicles + 1);
-
-            // Write vehicle to file with appropriate direction
-            write_vehicle(id, lane, lane_num, dir);
-
-            // Update counters
-            total_vehicles++;
-            current_batch++;
-            if (lane == 'A' && lane_num == 2) {
-                a2_count++;
-            }
-
-            // Display progress
-            display_status(current_batch, MAX_VEHICLES_PER_BATCH, a2_count);
 
             // Periodically display lane stats (every 5 seconds)
             auto currentTime = std::chrono::steady_clock::now();
@@ -4048,8 +4531,8 @@ int main() {
             }
 
             // Check priority lane count and log state changes
-            auto counts = count_vehicles_in_lanes();
-            int a2_count_current = counts["A2"];
+            auto currentCounts = count_vehicles_in_lanes();
+            int a2_count_current = currentCounts["A2"];
 
             if (!in_priority_mode && a2_count_current > PRIORITY_THRESHOLD_HIGH) {
                 in_priority_mode = true;
@@ -4614,6 +5097,9 @@ private:
 
     // Read vehicles from files
     void readVehicles();
+
+  void limitVehiclesPerLane();
+  void preventVehicleOverlap();
 
     // Update lane priorities
     void updatePriorities();

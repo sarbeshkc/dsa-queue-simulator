@@ -49,11 +49,11 @@ private:
     // Last state change time in milliseconds
     uint32_t lastStateChangeTime;
 
-    // Priority mode flag
+    // Priority mode flags
     bool isPriorityMode;
-
-    // Track when normal mode should resume (after priority mode drops to 5 vehicles)
     bool shouldResumeNormalMode;
+    bool forceAGreen;
+    uint32_t priorityModeStartTime;
 
     // Helper function to calculate average vehicle count
     float calculateAverageVehicleCount(const std::vector<Lane*>& lanes);
@@ -63,6 +63,11 @@ private:
     void drawLightForB(SDL_Renderer* renderer, bool isRed);
     void drawLightForC(SDL_Renderer* renderer, bool isRed);
     void drawLightForD(SDL_Renderer* renderer, bool isRed);
+
+    // Helper function for drawing road light indicators in the control panel
+    void drawRoadLightIndicator(SDL_Renderer* renderer, int x, int y,
+                               int lightSize, int labelHeight,
+                               char roadId, bool isRed);
 };
 
 #endif // TRAFFIC_LIGHT_H

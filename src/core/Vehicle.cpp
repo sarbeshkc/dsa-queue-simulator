@@ -4,6 +4,7 @@
 #include "utils/DebugLogger.h"
 #include <cmath>
 #include <sstream>
+#include <random> // Add this for random number generation
 
 Vehicle::Vehicle(const std::string& id, char lane, int laneNumber, bool isEmergency)
     : id(id),
@@ -185,14 +186,24 @@ void Vehicle::initializeWaypoints() {
     waypoints.clear();
 
     // Adjust intersection boundaries
-    const float intersectionHalf = 70.0f; // Increased size for better visualization
+    const float intersectionHalf = 70.0f; // Intersection size
     const float leftEdge = centerX - intersectionHalf;
     const float rightEdge = centerX + intersectionHalf;
     const float topEdge = centerY - intersectionHalf;
     const float bottomEdge = centerY + intersectionHalf;
 
-    // Lane offset - consistent with vehicle initialization
-    const float laneOffset = 50.0f;
+    // CRITICAL: Lane offsets for proper alignment
+    // These define the x/y positions of lanes for proper alignment
+    const float laneOffset = Constants::LANE_WIDTH;
+
+    // L1 (incoming lane) should be offset inward from center
+    const float lane1Offset = -20.0f;
+
+    // L2 is in the center of each road
+    const float lane2Offset = 0.0f;
+
+    // L3 (free lane) should be offset outward from center
+    const float lane3Offset = 20.0f;
 
     // Add the starting position as first waypoint
     waypoints.push_back({turnPosX, turnPosY});
@@ -213,129 +224,212 @@ void Vehicle::initializeWaypoints() {
             break;
     }
 
-    // UPDATED TURNING LOGIC BASED ON ASSIGNMENT REQUIREMENTS:
+    // CRITICAL: Strictly follow the assignment routing requirements:
     // AL3 → BL1; AL2: Straight → CL1, Left → DL1
     // BL3 → CL1; BL2: Straight → DL1, Left → AL1
     // CL3 → DL1; CL2: Straight → AL1, Left → BL1
     // DL3 → AL1; DL2: Straight → BL1, Left → CL1
 
-    float centerPointX, centerPointY, exitPointX, exitPointY;
+    // CRITICAL: Before initializing, log the vehicle's details
+    std::ostringstream debugLog;
+    debugLog << "Routing vehicle " << id << " from " << lane << laneNumber;
+    if (laneNumber == 3) {
+        debugLog << " (free lane, always turns LEFT)";
+    } else if (laneNumber == 2) {
+        debugLog << " going " << (destination == Destination::LEFT ? "LEFT" : "STRAIGHT");
+    }
+    DebugLogger::log(debugLog.str(), DebugLogger::LogLevel::ERROR);
 
     if (laneNumber == 3) {
-        // Lane 3 always turns left - Updated for the required routing
+        // CRITICAL: Lane 3 MUST ALWAYS turn left to L1
         switch (currentDirection) {
             case Direction::DOWN:  // A(North) to B(East) - AL3 → BL1
-                centerPointX = centerX + laneOffset;
-                centerPointY = centerY - laneOffset;
-                exitPointX = rightEdge + 5.0f;
-                exitPointY = centerY;  // Lane 1 position (B)
+                // First intermediate point inside intersection
+                waypoints.push_back({centerX, topEdge + 20.0f});
 
-                waypoints.push_back({centerPointX, centerPointY});  // Turn center
-                waypoints.push_back({exitPointX, exitPointY});      // Exit point
-                waypoints.push_back({windowWidth + 30.0f, exitPointY}); // Off screen
+                // Second intermediate point
+                waypoints.push_back({rightEdge - 20.0f, centerY});
+
+                // CRITICAL: Exit precisely in BL1
+                waypoints.push_back({rightEdge + 5.0f, centerY + lane1Offset});
+
+                // Off screen
+                waypoints.push_back({windowWidth + 30.0f, centerY + lane1Offset});
+
+                DebugLogger::log("AL3 route: LEFT to BL1", DebugLogger::LogLevel::ERROR);
                 break;
 
             case Direction::UP:    // C(South) to D(West) - CL3 → DL1
-                centerPointX = centerX - laneOffset;
-                centerPointY = centerY + laneOffset;
-                exitPointX = leftEdge - 5.0f;
-                exitPointY = centerY;  // Lane 1 position (D)
+                // First intermediate point
+                waypoints.push_back({centerX, bottomEdge - 20.0f});
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({-30.0f, exitPointY});
+                // Second intermediate point
+                waypoints.push_back({leftEdge + 20.0f, centerY});
+
+                // CRITICAL: Exit precisely in DL1
+                waypoints.push_back({leftEdge - 5.0f, centerY + lane1Offset});
+
+                // Off screen
+                waypoints.push_back({-30.0f, centerY + lane1Offset});
+
+                DebugLogger::log("CL3 route: LEFT to DL1", DebugLogger::LogLevel::ERROR);
                 break;
 
             case Direction::LEFT:  // B(East) to C(South) - BL3 → CL1
-                centerPointX = centerX + laneOffset;
-                centerPointY = centerY + laneOffset;
-                exitPointX = centerX;  // Lane 1 position (C)
-                exitPointY = bottomEdge + 5.0f;
+                // First intermediate point
+                waypoints.push_back({rightEdge - 20.0f, centerY});
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({exitPointX, windowHeight + 30.0f});
+                // Second intermediate point
+                waypoints.push_back({centerX, bottomEdge - 20.0f});
+
+                // CRITICAL: Exit precisely in CL1
+                waypoints.push_back({centerX + lane1Offset, bottomEdge + 5.0f});
+
+                // Off screen
+                waypoints.push_back({centerX + lane1Offset, windowHeight + 30.0f});
+
+                DebugLogger::log("BL3 route: LEFT to CL1", DebugLogger::LogLevel::ERROR);
                 break;
 
             case Direction::RIGHT: // D(West) to A(North) - DL3 → AL1
-                centerPointX = centerX - laneOffset;
-                centerPointY = centerY - laneOffset;
-                exitPointX = centerX;  // Lane 1 position (A)
-                exitPointY = topEdge - 5.0f;
+                // First intermediate point
+                waypoints.push_back({leftEdge + 20.0f, centerY});
 
-                waypoints.push_back({centerPointX, centerPointY});
-                waypoints.push_back({exitPointX, exitPointY});
-                waypoints.push_back({exitPointX, -30.0f});
+                // Second intermediate point
+                waypoints.push_back({centerX, topEdge + 20.0f});
+
+                // CRITICAL: Exit precisely in AL1
+                waypoints.push_back({centerX + lane1Offset, topEdge - 5.0f});
+
+                // Off screen
+                waypoints.push_back({centerX + lane1Offset, -30.0f});
+
+                DebugLogger::log("DL3 route: LEFT to AL1", DebugLogger::LogLevel::ERROR);
                 break;
         }
     }
     else if (laneNumber == 2) {
         if (destination == Destination::STRAIGHT) {
-            // Straight movements - Updated for the required routing
+            // CRITICAL: L2 straight must go to L1 (incoming lane)
             switch (currentDirection) {
                 case Direction::DOWN:  // A(North) to C(South) - AL2(straight) → CL1
-                    waypoints.push_back({turnPosX, bottomEdge + 5.0f});  // Exit point
-                    waypoints.push_back({turnPosX, windowHeight + 30.0f});  // Off screen
+                    // Through intersection
+                    waypoints.push_back({centerX, centerY});
+
+                    // CRITICAL: Exit precisely in CL1
+                    waypoints.push_back({centerX + lane1Offset, bottomEdge + 5.0f});
+
+                    // Off screen
+                    waypoints.push_back({centerX + lane1Offset, windowHeight + 30.0f});
+
+                    DebugLogger::log("AL2 route: STRAIGHT to CL1", DebugLogger::LogLevel::ERROR);
                     break;
+
                 case Direction::UP:    // C(South) to A(North) - CL2(straight) → AL1
-                    waypoints.push_back({turnPosX, topEdge - 5.0f});
-                    waypoints.push_back({turnPosX, -30.0f});
+                    // Through intersection
+                    waypoints.push_back({centerX, centerY});
+
+                    // CRITICAL: Exit precisely in AL1
+                    waypoints.push_back({centerX + lane1Offset, topEdge - 5.0f});
+
+                    // Off screen
+                    waypoints.push_back({centerX + lane1Offset, -30.0f});
+
+                    DebugLogger::log("CL2 route: STRAIGHT to AL1", DebugLogger::LogLevel::ERROR);
                     break;
+
                 case Direction::LEFT:  // B(East) to D(West) - BL2(straight) → DL1
-                    waypoints.push_back({leftEdge - 5.0f, turnPosY});
-                    waypoints.push_back({-30.0f, turnPosY});
+                    // Through intersection
+                    waypoints.push_back({centerX, centerY});
+
+                    // CRITICAL: Exit precisely in DL1
+                    waypoints.push_back({leftEdge - 5.0f, centerY + lane1Offset});
+
+                    // Off screen
+                    waypoints.push_back({-30.0f, centerY + lane1Offset});
+
+                    DebugLogger::log("BL2 route: STRAIGHT to DL1", DebugLogger::LogLevel::ERROR);
                     break;
+
                 case Direction::RIGHT: // D(West) to B(East) - DL2(straight) → BL1
-                    waypoints.push_back({rightEdge + 5.0f, turnPosY});
-                    waypoints.push_back({windowWidth + 30.0f, turnPosY});
+                    // Through intersection
+                    waypoints.push_back({centerX, centerY});
+
+                    // CRITICAL: Exit precisely in BL1
+                    waypoints.push_back({rightEdge + 5.0f, centerY + lane1Offset});
+
+                    // Off screen
+                    waypoints.push_back({windowWidth + 30.0f, centerY + lane1Offset});
+
+                    DebugLogger::log("DL2 route: STRAIGHT to BL1", DebugLogger::LogLevel::ERROR);
                     break;
             }
         }
         else if (destination == Destination::LEFT) {
-            // Left turn movements for L2 - Updated for the required routing
+            // CRITICAL: L2 left turn must go to L1 (incoming lane)
             switch (currentDirection) {
                 case Direction::DOWN:  // A(North) to D(West) - AL2(left) → DL1
-                    centerPointX = centerX - laneOffset;
-                    centerPointY = centerY - laneOffset;
-                    exitPointX = leftEdge - 5.0f;
-                    exitPointY = centerY;  // Lane 1 position (D)
+                    // First turn point
+                    waypoints.push_back({centerX, topEdge + 20.0f});
 
-                    waypoints.push_back({centerPointX, centerPointY});
-                    waypoints.push_back({exitPointX, exitPointY});
-                    waypoints.push_back({-30.0f, exitPointY});
+                    // Second turn point
+                    waypoints.push_back({leftEdge + 20.0f, centerY});
+
+                    // CRITICAL: Exit precisely in DL1
+                    waypoints.push_back({leftEdge - 5.0f, centerY + lane1Offset});
+
+                    // Off screen
+                    waypoints.push_back({-30.0f, centerY + lane1Offset});
+
+                    DebugLogger::log("AL2 route: LEFT to DL1", DebugLogger::LogLevel::ERROR);
                     break;
 
                 case Direction::UP:    // C(South) to B(East) - CL2(left) → BL1
-                    centerPointX = centerX + laneOffset;
-                    centerPointY = centerY + laneOffset;
-                    exitPointX = rightEdge + 5.0f;
-                    exitPointY = centerY;  // Lane 1 position (B)
+                    // First turn point
+                    waypoints.push_back({centerX, bottomEdge - 20.0f});
 
-                    waypoints.push_back({centerPointX, centerPointY});
-                    waypoints.push_back({exitPointX, exitPointY});
-                    waypoints.push_back({windowWidth + 30.0f, exitPointY});
+                    // Second turn point
+                    waypoints.push_back({rightEdge - 20.0f, centerY});
+
+                    // CRITICAL: Exit precisely in BL1
+                    waypoints.push_back({rightEdge + 5.0f, centerY + lane1Offset});
+
+                    // Off screen
+                    waypoints.push_back({windowWidth + 30.0f, centerY + lane1Offset});
+
+                    DebugLogger::log("CL2 route: LEFT to BL1", DebugLogger::LogLevel::ERROR);
                     break;
 
                 case Direction::LEFT:  // B(East) to A(North) - BL2(left) → AL1
-                    centerPointX = centerX + laneOffset;
-                    centerPointY = centerY - laneOffset;
-                    exitPointX = centerX;  // Lane 1 position (A)
-                    exitPointY = topEdge - 5.0f;
+                    // First turn point
+                    waypoints.push_back({rightEdge - 20.0f, centerY});
 
-                    waypoints.push_back({centerPointX, centerPointY});
-                    waypoints.push_back({exitPointX, exitPointY});
-                    waypoints.push_back({exitPointX, -30.0f});
+                    // Second turn point
+                    waypoints.push_back({centerX, topEdge + 20.0f});
+
+                    // CRITICAL: Exit precisely in AL1
+                    waypoints.push_back({centerX + lane1Offset, topEdge - 5.0f});
+
+                    // Off screen
+                    waypoints.push_back({centerX + lane1Offset, -30.0f});
+
+                    DebugLogger::log("BL2 route: LEFT to AL1", DebugLogger::LogLevel::ERROR);
                     break;
 
                 case Direction::RIGHT: // D(West) to C(South) - DL2(left) → CL1
-                    centerPointX = centerX - laneOffset;
-                    centerPointY = centerY + laneOffset;
-                    exitPointX = centerX;  // Lane 1 position (C)
-                    exitPointY = bottomEdge + 5.0f;
+                    // First turn point
+                    waypoints.push_back({leftEdge + 20.0f, centerY});
 
-                    waypoints.push_back({centerPointX, centerPointY});
-                    waypoints.push_back({exitPointX, exitPointY});
-                    waypoints.push_back({exitPointX, windowHeight + 30.0f});
+                    // Second turn point
+                    waypoints.push_back({centerX, bottomEdge - 20.0f});
+
+                    // CRITICAL: Exit precisely in CL1
+                    waypoints.push_back({centerX + lane1Offset, bottomEdge + 5.0f});
+
+                    // Off screen
+                    waypoints.push_back({centerX + lane1Offset, windowHeight + 30.0f});
+
+                    DebugLogger::log("DL2 route: LEFT to CL1", DebugLogger::LogLevel::ERROR);
                     break;
             }
         }
@@ -344,6 +438,10 @@ void Vehicle::initializeWaypoints() {
     // Set current waypoint index
     currentWaypoint = 0;
     turning = false;
+
+    // CRITICAL: log the total waypoints for debugging
+    DebugLogger::log("Vehicle " + id + " initialized with " +
+                   std::to_string(waypoints.size()) + " waypoints");
 }
 
 std::string Vehicle::getId() const {
@@ -443,12 +541,38 @@ float Vehicle::easeInOutQuad(float t) const {
 }
 
 void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
-    // Fine-tune speed for smoother animation
-    const float SPEED = 0.02f * delta;
-    const float VEHICLE_SPACING = 35.0f; // Must match laneOffset in constructor
+    // CRITICAL FIX: Free lane vehicles (L3) can ALWAYS move regardless of traffic light
+    bool canMove = isGreenLight;
 
-    // Free lane (lane 3) always has green light
-    bool canMove = isGreenLight || laneNumber == 3;
+    // L3 is free lane - ALWAYS allowed to move
+    if (laneNumber == 3) {
+        canMove = true;
+
+        // Debug log for free lane
+        static uint32_t lastLogTime = 0;
+        uint32_t currentTime = SDL_GetTicks();
+        if (currentTime - lastLogTime > 3000) {
+DebugLogger::log("FREE LANE (" + std::string(1, lane) + "3): Vehicle " + id + " moving freely",
+               DebugLogger::LogLevel::ERROR);
+            lastLogTime = currentTime;
+        }
+    }
+
+    // DEBUG: Log A2 priority lane status
+    if (lane == 'A' && laneNumber == 2) {
+        static uint32_t lastLogTime = 0;
+        uint32_t currentTime = SDL_GetTicks();
+        if (currentTime - lastLogTime > 3000) {
+            DebugLogger::log("PRIORITY LANE (A2): Vehicle " + id + " canMove=" +
+                         (canMove ? "true" : "false"), DebugLogger::LogLevel::ERROR);
+            lastLogTime = currentTime;
+        }
+    }
+
+    // Fine-tune speed for smoother animation
+    const float SPEED_BASE = 0.018f;
+    const float SPEED = SPEED_BASE * delta;
+    const float VEHICLE_SPACING = 50.0f; // Increased from 35.0f for better separation
 
     if (canMove) {
         // We have more waypoints to travel
@@ -468,31 +592,54 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
             if (distance < 3.0f) {
                 currentWaypoint++;
 
-                // If entering the intersection and turning, flag as turning
-                if (currentWaypoint == 2 &&
-                    (destination == Destination::LEFT || destination == Destination::RIGHT)) {
-                    turning = true;
-                    turnProgress = 0.0f;
-                    state = VehicleState::IN_INTERSECTION;
-
-                    // Log turn start
-                    std::ostringstream oss;
-                    oss << "Vehicle " << id << " is now turning "
-                        << (destination == Destination::LEFT ? "LEFT" : "RIGHT");
-                    DebugLogger::log(oss.str());
+                // Log progress through waypoints for debugging
+                if (laneNumber == 3 || (lane == 'A' && laneNumber == 2)) {
+                    DebugLogger::log("Vehicle " + id + " on " + lane + std::to_string(laneNumber) +
+                                 " reached waypoint " + std::to_string(currentWaypoint) +
+                                 " of " + std::to_string(waypoints.size()),
+                                 DebugLogger::LogLevel::DEBUG);
                 }
 
-                // If exiting the intersection
-                if (currentWaypoint == 3) {
+                // For L3 (always turns left) and L2 (turns left if specified)
+                if ((laneNumber == 3) ||
+                    (laneNumber == 2 && destination == Destination::LEFT)) {
+
+                    // When entering turning points (varies by direction)
+                    if (currentWaypoint == 2) {
+                        turning = true;
+                        turnProgress = 0.0f;
+                        state = VehicleState::IN_INTERSECTION;
+
+                        // Log turn start
+                        std::ostringstream oss;
+                        oss << "Vehicle " << id << " on " << lane << laneNumber << " is now turning LEFT";
+                        DebugLogger::log(oss.str(), DebugLogger::LogLevel::ERROR);
+                    }
+                }
+
+                // Determine when a vehicle has exited the intersection
+                bool isExiting = false;
+
+                if (laneNumber == 3) {
+                    // L3 vehicles typically reach exit point at waypoint 3
+                    isExiting = (currentWaypoint == 3);
+                } else if (laneNumber == 2) {
+                    if (destination == Destination::LEFT) {
+                        // L2 turning left typically reaches exit at waypoint 3
+                        isExiting = (currentWaypoint == 3);
+                    } else {
+                        // L2 going straight typically reaches exit at waypoint 2
+                        isExiting = (currentWaypoint == 2);
+                    }
+                }
+
+                // Update vehicle state when exiting
+                if (isExiting) {
                     turning = false;
                     state = VehicleState::EXITING;
 
-                    // Update lane and number based on destination and direction
-                    // This follows the assignment rules for lane changes:
-                    // AL3 → BL1; AL2: Straight → CL1, Left → DL1
-                    // BL3 → CL1; BL2: Straight → DL1, Left → AL1
-                    // CL3 → DL1; CL2: Straight → AL1, Left → BL1
-                    // DL3 → AL1; DL2: Straight → BL1, Left → CL1
+                    // CRITICAL: Ensure the lane assignments strictly follow the rules
+                    std::string newLaneStr;
                     switch (currentDirection) {
                         case Direction::DOWN:  // From North (A)
                             if (laneNumber == 3) {
@@ -500,20 +647,21 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
                                 lane = 'B';
                                 laneNumber = 1;
                                 currentDirection = Direction::LEFT;
-                                DebugLogger::log("Vehicle " + id + " now on B1 (turned LEFT from A3)");
+                                newLaneStr = "B1 (turned LEFT from A3)";
                             }
                             else if (destination == Destination::LEFT) {
                                 // AL2(left) → DL1
                                 lane = 'D';
                                 laneNumber = 1;
                                 currentDirection = Direction::RIGHT;
-                                DebugLogger::log("Vehicle " + id + " now on D1 (turned LEFT from A2)");
+                                newLaneStr = "D1 (turned LEFT from A2)";
                             }
                             else {
                                 // AL2(straight) → CL1
                                 lane = 'C';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on C1 (going STRAIGHT from A2)");
+                                currentDirection = Direction::UP;
+                                newLaneStr = "C1 (going STRAIGHT from A2)";
                             }
                             break;
 
@@ -523,20 +671,21 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
                                 lane = 'D';
                                 laneNumber = 1;
                                 currentDirection = Direction::RIGHT;
-                                DebugLogger::log("Vehicle " + id + " now on D1 (turned LEFT from C3)");
+                                newLaneStr = "D1 (turned LEFT from C3)";
                             }
                             else if (destination == Destination::LEFT) {
                                 // CL2(left) → BL1
                                 lane = 'B';
                                 laneNumber = 1;
                                 currentDirection = Direction::LEFT;
-                                DebugLogger::log("Vehicle " + id + " now on B1 (turned LEFT from C2)");
+                                newLaneStr = "B1 (turned LEFT from C2)";
                             }
                             else {
                                 // CL2(straight) → AL1
                                 lane = 'A';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on A1 (going STRAIGHT from C2)");
+                                currentDirection = Direction::DOWN;
+                                newLaneStr = "A1 (going STRAIGHT from C2)";
                             }
                             break;
 
@@ -546,20 +695,21 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
                                 lane = 'C';
                                 laneNumber = 1;
                                 currentDirection = Direction::UP;
-                                DebugLogger::log("Vehicle " + id + " now on C1 (turned LEFT from B3)");
+                                newLaneStr = "C1 (turned LEFT from B3)";
                             }
                             else if (destination == Destination::LEFT) {
                                 // BL2(left) → AL1
                                 lane = 'A';
                                 laneNumber = 1;
                                 currentDirection = Direction::DOWN;
-                                DebugLogger::log("Vehicle " + id + " now on A1 (turned LEFT from B2)");
+                                newLaneStr = "A1 (turned LEFT from B2)";
                             }
                             else {
                                 // BL2(straight) → DL1
                                 lane = 'D';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on D1 (going STRAIGHT from B2)");
+                                currentDirection = Direction::RIGHT;
+                                newLaneStr = "D1 (going STRAIGHT from B2)";
                             }
                             break;
 
@@ -569,24 +719,45 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
                                 lane = 'A';
                                 laneNumber = 1;
                                 currentDirection = Direction::DOWN;
-                                DebugLogger::log("Vehicle " + id + " now on A1 (turned LEFT from D3)");
+                                newLaneStr = "A1 (turned LEFT from D3)";
                             }
                             else if (destination == Destination::LEFT) {
                                 // DL2(left) → CL1
                                 lane = 'C';
                                 laneNumber = 1;
                                 currentDirection = Direction::UP;
-                                DebugLogger::log("Vehicle " + id + " now on C1 (turned LEFT from D2)");
+                                newLaneStr = "C1 (turned LEFT from D2)";
                             }
                             else {
                                 // DL2(straight) → BL1
                                 lane = 'B';
                                 laneNumber = 1;
-                                DebugLogger::log("Vehicle " + id + " now on B1 (going STRAIGHT from D2)");
+                                currentDirection = Direction::LEFT;
+                                newLaneStr = "B1 (going STRAIGHT from D2)";
                             }
                             break;
                     }
+
+                    // Log lane change
+                    DebugLogger::log("==================== Vehicle " + id + " now on " + newLaneStr +
+                                  " ====================", DebugLogger::LogLevel::ERROR);
                 }
+            }
+
+            // Adjust speed based on position and turn status
+            float adjustedSpeed = SPEED;
+
+            // Slower when approaching intersection
+            if (currentWaypoint == 1) {
+                adjustedSpeed *= 0.9f;
+            }
+            // Even slower in turning phase
+            else if (turning) {
+                adjustedSpeed *= 0.7f;
+            }
+            // Faster when exiting intersection
+            else if (currentWaypoint >= 3) {
+                adjustedSpeed *= 1.2f;
             }
 
             // Move toward next waypoint
@@ -595,9 +766,9 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
                 dx /= distance;
                 dy /= distance;
 
-                // Move toward waypoint
-                turnPosX += dx * SPEED;
-                turnPosY += dy * SPEED;
+                // Move toward waypoint with adjusted speed
+                turnPosX += dx * adjustedSpeed;
+                turnPosY += dy * adjustedSpeed;
 
                 // Update animation position
                 animPos = (currentDirection == Direction::UP || currentDirection == Direction::DOWN) ?
@@ -621,17 +792,18 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
                 turnPosY < -30.0f || turnPosY > windowHeight + 30.0f) {
                 // Flag for removal
                 state = VehicleState::EXITED;
+                DebugLogger::log("Vehicle " + id + " has left the screen", DebugLogger::LogLevel::DEBUG);
             }
         }
     }
     else {
-        // Red light - handle queue positioning
+        // Red light - handle queue positioning with deceleration
         if (currentWaypoint <= 1) {  // Vehicle is approaching or at the stop line
             // Get the stop line waypoint
             auto& stopLine = waypoints[1];
 
-            // Calculate target position based on queue position
-            float queueOffsetDistance = VEHICLE_SPACING * queuePos;
+            // Calculate target position based on queue position with improved spacing
+            float queueOffsetDistance = VEHICLE_SPACING * (queuePos + 0.2f); // Added small offset for better staggering
             float queueStopX = stopLine.x;
             float queueStopY = stopLine.y;
 
@@ -656,15 +828,22 @@ void Vehicle::update(uint32_t delta, bool isGreenLight, float targetPos) {
             float dy = queueStopY - turnPosY;
             float distance = std::sqrt(dx*dx + dy*dy);
 
+            // Adjust speed based on distance (decelerate as approaching)
+            float adjustedSpeed = SPEED;
+            if (distance < 50.0f) {
+                // Slow down as approaching the stop position
+                adjustedSpeed *= (distance / 50.0f) + 0.2f;
+            }
+
             // Only move if far enough from target position (prevents jitter)
             if (distance > 2.0f) {
                 // Normalize direction
                 dx /= distance;
                 dy /= distance;
 
-                // Move toward queue position
-                turnPosX += dx * SPEED;
-                turnPosY += dy * SPEED;
+                // Move toward queue position with adjusted speed
+                turnPosX += dx * adjustedSpeed;
+                turnPosY += dy * adjustedSpeed;
 
                 // Update animation position
                 animPos = (currentDirection == Direction::UP || currentDirection == Direction::DOWN) ?
@@ -698,8 +877,10 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
 
     // STEP 1: Choose appropriate vehicle color based on lane and type
     if (isEmergency) {
-        // Emergency vehicles are bright red
-        color = {255, 0, 0, 255};
+        // Emergency vehicles are bright red with flashing effect
+        uint32_t time = SDL_GetTicks();
+        bool flash = (time / 250) % 2 == 0; // Flash every 250ms
+        color = flash ? SDL_Color{255, 0, 0, 255} : SDL_Color{180, 0, 0, 255};
     }
     else {
         // Base color determined by lane and lane number
@@ -708,7 +889,8 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
                 if (laneNumber == 1) {
                     color = {30, 144, 255, 255}; // Dodger Blue for A1
                 } else if (laneNumber == 2) {
-                    // AL2 is priority lane - orange
+                    // AL2 is priority lane - orange with intensity based on count
+                    // Brighter orange when more vehicles (simulating priority)
                     color = {255, 140, 0, 255}; // Orange for A2 (Priority)
                 } else {
                     // Free lane - green
@@ -728,7 +910,7 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
 
             case 'C': // South road
                 if (laneNumber == 1) {
-                    color = {30, 144, 255, 255}; // Dodger Blue for C1
+                    color = {70, 130, 180, 255}; // Steel Blue for C1
                 } else if (laneNumber == 2) {
                     color = {210, 105, 30, 255}; // Chocolate for C2
                 } else {
@@ -763,8 +945,8 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
 
     // STEP 2: Determine vehicle dimensions - LARGER for better visibility
-    float vehicleWidth = 12.0f;  // Wider than original
-    float vehicleLength = 24.0f; // Longer than original
+    float vehicleWidth = 14.0f;  // Wider than original
+    float vehicleLength = 26.0f; // Longer than original
 
     // STEP 3: Create vehicle rectangle based on orientation
     SDL_FRect vehicleRect;
@@ -809,6 +991,43 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
 
     // STEP 4: Draw the vehicle body with border
     SDL_RenderFillRect(renderer, &vehicleRect);
+
+    // Add 3D effect with gradient
+    SDL_Color shadowColor = {
+        static_cast<Uint8>(color.r * 0.7f),
+        static_cast<Uint8>(color.g * 0.7f),
+        static_cast<Uint8>(color.b * 0.7f),
+        color.a
+    };
+
+    SDL_Color highlightColor = {
+        static_cast<Uint8>(std::min(255, color.r + 40)),
+        static_cast<Uint8>(std::min(255, color.g + 40)),
+        static_cast<Uint8>(std::min(255, color.b + 40)),
+        color.a
+    };
+
+    // Add shadow edge
+    SDL_SetRenderDrawColor(renderer, shadowColor.r, shadowColor.g, shadowColor.b, shadowColor.a);
+    SDL_FRect shadowEdge;
+
+    if (currentDirection == Direction::DOWN || currentDirection == Direction::UP) {
+        shadowEdge = {vehicleRect.x + vehicleRect.w * 0.6f, vehicleRect.y, vehicleRect.w * 0.4f, vehicleRect.h};
+    } else {
+        shadowEdge = {vehicleRect.x, vehicleRect.y + vehicleRect.h * 0.6f, vehicleRect.w, vehicleRect.h * 0.4f};
+    }
+    SDL_RenderFillRect(renderer, &shadowEdge);
+
+    // Add highlight edge
+    SDL_SetRenderDrawColor(renderer, highlightColor.r, highlightColor.g, highlightColor.b, highlightColor.a);
+    SDL_FRect highlightEdge;
+
+    if (currentDirection == Direction::DOWN || currentDirection == Direction::UP) {
+        highlightEdge = {vehicleRect.x, vehicleRect.y, vehicleRect.w * 0.3f, vehicleRect.h};
+    } else {
+        highlightEdge = {vehicleRect.x, vehicleRect.y, vehicleRect.w, vehicleRect.h * 0.3f};
+    }
+    SDL_RenderFillRect(renderer, &highlightEdge);
 
     // Add border outline for better definition
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Black border
@@ -855,8 +1074,19 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
                 break;
         }
 
-        // Draw triangle
+        // Draw filled triangle
         SDL_RenderFillTriangleF(renderer, arrow[0].x, arrow[0].y, arrow[1].x, arrow[1].y, arrow[2].x, arrow[2].y);
+
+        // Draw "L" symbol in bright yellow to indicate LEFT turn
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+        float centerX = vehicleRect.x + vehicleRect.w/2;
+        float centerY = vehicleRect.y + vehicleRect.h/2;
+        float symbolSize = 6.0f;
+
+        SDL_RenderLine(renderer, centerX - symbolSize/2, centerY - symbolSize/2,
+                       centerX - symbolSize/2, centerY + symbolSize/2);
+        SDL_RenderLine(renderer, centerX - symbolSize/2, centerY + symbolSize/2,
+                       centerX + symbolSize/2, centerY + symbolSize/2);
     }
     else if (destination == Destination::STRAIGHT) {
         // STRAIGHT indicator - double parallel lines
@@ -895,76 +1125,129 @@ void Vehicle::render(SDL_Renderer* renderer, SDL_Texture* vehicleTexture, int qu
 
         SDL_RenderFillRect(renderer, &line1);
         SDL_RenderFillRect(renderer, &line2);
+
+        // Draw "S" symbol in bright yellow to indicate STRAIGHT
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+        float centerX = vehicleRect.x + vehicleRect.w/2;
+        float centerY = vehicleRect.y + vehicleRect.h/2;
+        float symbolSize = 6.0f;
+
+        // Draw S shape with 5 line segments
+        SDL_RenderLine(renderer, centerX + symbolSize/2, centerY - symbolSize/2,
+                      centerX - symbolSize/2, centerY - symbolSize/2);
+        SDL_RenderLine(renderer, centerX - symbolSize/2, centerY - symbolSize/2,
+                      centerX - symbolSize/2, centerY);
+        SDL_RenderLine(renderer, centerX - symbolSize/2, centerY,
+                      centerX + symbolSize/2, centerY);
+        SDL_RenderLine(renderer, centerX + symbolSize/2, centerY,
+                      centerX + symbolSize/2, centerY + symbolSize/2);
+        SDL_RenderLine(renderer, centerX + symbolSize/2, centerY + symbolSize/2,
+                      centerX - symbolSize/2, centerY + symbolSize/2);
     }
 
     // STEP 6: Add lane number indicators as distinctive marks
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White for indicators
 
-    float dotSize = 4.0f; // Larger dots
-    float dotSpacing = 6.0f;
+    // Draw large lane number on vehicle
+    float numX = vehicleRect.x + vehicleRect.w*0.5f;
+    float numY = vehicleRect.y + vehicleRect.h*0.5f;
+    float numSize = 8.0f;
 
-    // Draw dots corresponding to lane number
-    for (int i = 0; i < laneNumber; i++) {
-        SDL_FRect dot;
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Black for number
 
-        // Position depends on vehicle orientation
-        switch (currentDirection) {
-            case Direction::DOWN:
-                dot = {
-                    vehicleRect.x + vehicleRect.w/2 - dotSize/2,
-                    vehicleRect.y + vehicleRect.h - 10.0f - i * dotSpacing,
-                    dotSize,
-                    dotSize
-                };
-                break;
+    switch (laneNumber) {
+        case 1: // Draw "1"
+            SDL_RenderLine(renderer, numX, numY - numSize/2, numX, numY + numSize/2);
+            break;
 
-            case Direction::UP:
-                dot = {
-                    vehicleRect.x + vehicleRect.w/2 - dotSize/2,
-                    vehicleRect.y + 10.0f + i * dotSpacing,
-                    dotSize,
-                    dotSize
-                };
-                break;
+        case 2: // Draw "2"
+            SDL_RenderLine(renderer, numX - numSize/2, numY - numSize/2, numX + numSize/2, numY - numSize/2);
+            SDL_RenderLine(renderer, numX + numSize/2, numY - numSize/2, numX + numSize/2, numY);
+            SDL_RenderLine(renderer, numX + numSize/2, numY, numX - numSize/2, numY);
+            SDL_RenderLine(renderer, numX - numSize/2, numY, numX - numSize/2, numY + numSize/2);
+            SDL_RenderLine(renderer, numX - numSize/2, numY + numSize/2, numX + numSize/2, numY + numSize/2);
+            break;
 
-            case Direction::LEFT:
-                dot = {
-                    vehicleRect.x + 10.0f + i * dotSpacing,
-                    vehicleRect.y + vehicleRect.h/2 - dotSize/2,
-                    dotSize,
-                    dotSize
-                };
-                break;
-
-            case Direction::RIGHT:
-                dot = {
-                    vehicleRect.x + vehicleRect.w - 10.0f - i * dotSpacing,
-                    vehicleRect.y + vehicleRect.h/2 - dotSize/2,
-                    dotSize,
-                    dotSize
-                };
-                break;
-        }
-
-        SDL_RenderFillRect(renderer, &dot);
+        case 3: // Draw "3"
+            SDL_RenderLine(renderer, numX - numSize/2, numY - numSize/2, numX + numSize/2, numY - numSize/2);
+            SDL_RenderLine(renderer, numX + numSize/2, numY - numSize/2, numX + numSize/2, numY);
+            SDL_RenderLine(renderer, numX - numSize/2, numY, numX + numSize/2, numY);
+            SDL_RenderLine(renderer, numX + numSize/2, numY, numX + numSize/2, numY + numSize/2);
+            SDL_RenderLine(renderer, numX - numSize/2, numY + numSize/2, numX + numSize/2, numY + numSize/2);
+            break;
     }
 
     // STEP 7: Emergency vehicle indicators (if applicable)
     if (isEmergency) {
-        // Draw a cross symbol for emergency vehicles
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White
+        // Draw a flashing effect
+        uint32_t time = SDL_GetTicks();
+        bool flash = (time / 200) % 2 == 0; // Flash every 200ms
 
-        float crossSize = 8.0f;
-        SDL_FRect crossV, crossH;
+        if (flash) {
+            // Draw a cross symbol for emergency vehicles when flashing
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White
 
-        crossH = {turnPosX - crossSize/2, turnPosY - 1.5f, crossSize, 3.0f};
-        crossV = {turnPosX - 1.5f, turnPosY - crossSize/2, 3.0f, crossSize};
+            float crossSize = 10.0f;
+            SDL_FRect crossV, crossH;
 
-        SDL_RenderFillRect(renderer, &crossH);
-        SDL_RenderFillRect(renderer, &crossV);
+            crossH = {turnPosX - crossSize/2, turnPosY - 1.5f, crossSize, 3.0f};
+            crossV = {turnPosX - 1.5f, turnPosY - crossSize/2, 3.0f, crossSize};
+
+            SDL_RenderFillRect(renderer, &crossH);
+            SDL_RenderFillRect(renderer, &crossV);
+
+            // Draw "E" for Emergency
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            float eX = vehicleRect.x + vehicleRect.w*0.3f;
+            float eY = vehicleRect.y + vehicleRect.h*0.3f;
+            float eSize = 6.0f;
+
+            SDL_RenderLine(renderer, eX, eY, eX, eY + eSize);
+            SDL_RenderLine(renderer, eX, eY, eX + eSize/2, eY);
+            SDL_RenderLine(renderer, eX, eY + eSize/2, eX + eSize/2, eY + eSize/2);
+            SDL_RenderLine(renderer, eX, eY + eSize, eX + eSize/2, eY + eSize);
+        }
+    }
+
+    // STEP 8: Add road indicator
+    // Draw small road letter (A,B,C,D) on each vehicle for easy identification
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    float roadX = vehicleRect.x + vehicleRect.w*0.25f;
+    float roadY = vehicleRect.y + vehicleRect.h*0.25f;
+    float roadSize = 6.0f;
+
+    switch (lane) {
+        case 'A': // Draw "A"
+            SDL_RenderLine(renderer, roadX - roadSize/2, roadY + roadSize/2, roadX, roadY - roadSize/2);
+            SDL_RenderLine(renderer, roadX, roadY - roadSize/2, roadX + roadSize/2, roadY + roadSize/2);
+            SDL_RenderLine(renderer, roadX - roadSize/4, roadY, roadX + roadSize/4, roadY);
+            break;
+
+        case 'B': // Draw "B"
+            SDL_RenderLine(renderer, roadX - roadSize/2, roadY - roadSize/2, roadX - roadSize/2, roadY + roadSize/2);
+            SDL_RenderLine(renderer, roadX - roadSize/2, roadY - roadSize/2, roadX + roadSize/2, roadY - roadSize/2);
+            SDL_RenderLine(renderer, roadX + roadSize/2, roadY - roadSize/2, roadX + roadSize/2, roadY);
+            SDL_RenderLine(renderer, roadX + roadSize/2, roadY, roadX - roadSize/2, roadY);
+            SDL_RenderLine(renderer, roadX - roadSize/2, roadY, roadX - roadSize/2, roadY + roadSize/2);
+            SDL_RenderLine(renderer, roadX - roadSize/2, roadY + roadSize/2, roadX + roadSize/2, roadY + roadSize/2);
+            SDL_RenderLine(renderer, roadX + roadSize/2, roadY + roadSize/2, roadX + roadSize/2, roadY);
+            break;
+
+        case 'C': // Draw "C"
+            SDL_RenderLine(renderer, roadX + roadSize/2, roadY - roadSize/2, roadX - roadSize/2, roadY - roadSize/2);
+            SDL_RenderLine(renderer, roadX - roadSize/2, roadY - roadSize/2, roadX - roadSize/2, roadY + roadSize/2);
+            SDL_RenderLine(renderer, roadX - roadSize/2, roadY + roadSize/2, roadX + roadSize/2, roadY + roadSize/2);
+            break;
+
+        case 'D': // Draw "D"
+            SDL_RenderLine(renderer, roadX - roadSize/2, roadY - roadSize/2, roadX - roadSize/2, roadY + roadSize/2);
+            SDL_RenderLine(renderer, roadX - roadSize/2, roadY - roadSize/2, roadX, roadY - roadSize/2);
+            SDL_RenderLine(renderer, roadX, roadY - roadSize/2, roadX + roadSize/2, roadY);
+            SDL_RenderLine(renderer, roadX + roadSize/2, roadY, roadX, roadY + roadSize/2);
+            SDL_RenderLine(renderer, roadX, roadY + roadSize/2, roadX - roadSize/2, roadY + roadSize/2);
+            break;
     }
 }
-
 // Helper for drawing triangles (SDL3 compatible)
 void Vehicle::SDL_RenderFillTriangleF(SDL_Renderer* renderer, float x1, float y1, float x2, float y2, float x3, float y3) {
     // Create vertices for rendering with SDL_RenderGeometry

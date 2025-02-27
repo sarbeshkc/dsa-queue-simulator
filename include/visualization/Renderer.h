@@ -83,6 +83,7 @@ private:
 
     // Helper to draw a direction arrow - this declaration was missing
     void drawDirectionArrow(int x, int y, Direction dir, SDL_Color color);
+  void drawLaneFlowArrow(int x, int y, Direction dir);
 };
 
 #endif // RENDERER_Hendif // RENDERER_Hendif // RENDERER_Hendif // RENDERER_H

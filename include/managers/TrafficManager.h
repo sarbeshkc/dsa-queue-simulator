@@ -72,6 +72,9 @@ private:
     // Read vehicles from files
     void readVehicles();
 
+  void limitVehiclesPerLane();
+  void preventVehicleOverlap();
+
     // Update lane priorities
     void updatePriorities();
 

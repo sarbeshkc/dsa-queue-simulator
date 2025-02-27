@@ -1,4 +1,4 @@
-// FILE: src/traffic_generator.cpp
+// F// FILE: src/traffic_generator.cpp
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -22,10 +22,11 @@
 // Namespaces
 namespace fs = std::filesystem;
 
-// Constants for the generator
+// Constants for the generator - MODIFIED VALUES HERE
 const std::string DATA_DIR = "data/lanes";
-const int GENERATION_INTERVAL_MS = 800;
-const int MAX_VEHICLES_PER_BATCH = 50;
+const int GENERATION_INTERVAL_MS = 2000;  // Increased from 800ms to 2000ms
+const int MAX_VEHICLES_PER_BATCH = 30;    // Reduced from 50 to 30
+const int MAX_TOTAL_VEHICLES = 60;        // New: Global limit
 const int PRIORITY_THRESHOLD_HIGH = 10;
 const int PRIORITY_THRESHOLD_LOW = 5;
 
@@ -333,38 +334,59 @@ int main() {
 
         // Continuous generation until terminated
         while (keepRunning) {
-            char lane = random_lane();
-            int lane_num = random_lane_number(); // Will only return 2 or 3
-            Direction dir = random_direction(lane_num);
+            // NEW: Check total vehicle count before generating more
+            auto counts = count_vehicles_in_lanes();
+            int totalVehiclesInSystem = 0;
 
-            // For testing priority condition, occasionally bias toward lane A2
-            if (gen() % 10 == 0) {
-                lane = 'A';
-                lane_num = 2;
-                dir = (gen() % 2 == 0) ? Direction::STRAIGHT : Direction::LEFT;
+            for (char lane = 'A'; lane <= 'D'; lane++) {
+                for (int i = 1; i <= 3; i++) {
+                    std::string laneKey = std::string(1, lane) + std::to_string(i);
+                    totalVehiclesInSystem += counts[laneKey];
+                }
             }
 
-            // Also ensure good distribution for lane 3 (free lane)
-            if (gen() % 15 == 0) {
-                lane = random_lane();
-                lane_num = 3; // Force lane 3 (free lane)
-                dir = Direction::LEFT; // Lane 3 always turns left
+            // Only generate new vehicles if below the maximum limit
+            if (totalVehiclesInSystem < MAX_TOTAL_VEHICLES) {
+                char lane = random_lane();
+                int lane_num = random_lane_number(); // Will only return 2 or 3
+                Direction dir = random_direction(lane_num);
+
+                // For testing priority condition, occasionally bias toward lane A2
+                if (gen() % 10 == 0) {
+                    lane = 'A';
+                    lane_num = 2;
+                    dir = (gen() % 2 == 0) ? Direction::STRAIGHT : Direction::LEFT;
+                }
+
+                // Also ensure good distribution for lane 3 (free lane)
+                if (gen() % 15 == 0) {
+                    lane = random_lane();
+                    lane_num = 3; // Force lane 3 (free lane)
+                    dir = Direction::LEFT; // Lane 3 always turns left
+                }
+
+                std::string id = "V" + std::to_string(total_vehicles + 1);
+
+                // Write vehicle to file with appropriate direction
+                write_vehicle(id, lane, lane_num, dir);
+
+                // Update counters
+                total_vehicles++;
+                current_batch++;
+                if (lane == 'A' && lane_num == 2) {
+                    a2_count++;
+                }
+
+                // Display progress
+                display_status(current_batch, MAX_VEHICLES_PER_BATCH, a2_count);
+            } else {
+                // Skip generation this cycle and wait for vehicles to clear
+                console_log("Vehicle limit reached (" + std::to_string(totalVehiclesInSystem) +
+                          "/" + std::to_string(MAX_TOTAL_VEHICLES) + ") - waiting", "\033[1;33m");
+
+                // Wait longer between generation attempts when system is full
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             }
-
-            std::string id = "V" + std::to_string(total_vehicles + 1);
-
-            // Write vehicle to file with appropriate direction
-            write_vehicle(id, lane, lane_num, dir);
-
-            // Update counters
-            total_vehicles++;
-            current_batch++;
-            if (lane == 'A' && lane_num == 2) {
-                a2_count++;
-            }
-
-            // Display progress
-            display_status(current_batch, MAX_VEHICLES_PER_BATCH, a2_count);
 
             // Periodically display lane stats (every 5 seconds)
             auto currentTime = std::chrono::steady_clock::now();
@@ -383,8 +405,8 @@ int main() {
             }
 
             // Check priority lane count and log state changes
-            auto counts = count_vehicles_in_lanes();
-            int a2_count_current = counts["A2"];
+            auto currentCounts = count_vehicles_in_lanes();
+            int a2_count_current = currentCounts["A2"];
 
             if (!in_priority_mode && a2_count_current > PRIORITY_THRESHOLD_HIGH) {
                 in_priority_mode = true;

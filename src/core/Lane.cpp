@@ -35,23 +35,21 @@ void Lane::enqueue(Vehicle* vehicle) {
     // Log the action
     std::ostringstream oss;
     oss << "Vehicle " << vehicle->getId() << " added to lane " << laneId << laneNumber;
+    if (isPriority) {
+        oss << " (PRIORITY LANE, count=" << currentCount << ")";
+    } else if (laneNumber == 3) {
+        oss << " (FREE LANE, always allowed to turn left)";
+    }
     DebugLogger::log(oss.str());
 
-    // Update priority if this is the priority lane
+    // CRITICAL: Update priority immediately if this is the priority lane
     if (isPriority) {
-        if (currentCount > Constants::PRIORITY_THRESHOLD_HIGH) {
+        if (currentCount > Constants::PRIORITY_THRESHOLD_HIGH && priority == 0) {
             priority = 100; // High priority
             std::ostringstream priorityOss;
-            priorityOss << "Lane " << laneId << laneNumber
-                << " priority increased (vehicles: " << currentCount << ")";
-            DebugLogger::log(priorityOss.str());
-        }
-        else if (currentCount < Constants::PRIORITY_THRESHOLD_LOW) {
-            priority = 0; // Normal priority
-            std::ostringstream priorityOss;
-            priorityOss << "Lane " << laneId << laneNumber
-                << " priority reset to normal (vehicles: " << currentCount << ")";
-            DebugLogger::log(priorityOss.str());
+            priorityOss << "*** Lane " << laneId << laneNumber
+                << " PRIORITY MODE ACTIVATED: " << currentCount << " vehicles (>10) ***";
+            DebugLogger::log(priorityOss.str(), DebugLogger::LogLevel::INFO);
         }
     }
 }
@@ -111,24 +109,27 @@ int Lane::getPriority() const {
 void Lane::updatePriority() {
     int count = vehicleQueue.size();
 
-    // Update priority based on vehicle count for AL2 lane
+    // CRITICAL: Update priority based on vehicle count for AL2 lane
     if (isPriority) {
+        // PRIORITY RULE: Enter priority mode when > PRIORITY_THRESHOLD_HIGH
         if (count > Constants::PRIORITY_THRESHOLD_HIGH && priority == 0) {
             priority = 100; // High priority
             std::ostringstream oss;
-            oss << "Lane " << laneId << laneNumber
-                << " priority increased (vehicles: " << count << ")";
-            DebugLogger::log(oss.str());
+            oss << "*** Lane " << laneId << laneNumber
+                << " PRIORITY MODE ACTIVATED: " << count << " vehicles (>10)";
+            DebugLogger::log(oss.str(), DebugLogger::LogLevel::INFO);
         }
+        // PRIORITY RULE: Exit priority mode when < PRIORITY_THRESHOLD_LOW
         else if (count < Constants::PRIORITY_THRESHOLD_LOW && priority > 0) {
             priority = 0; // Normal priority
             std::ostringstream oss;
-            oss << "Lane " << laneId << laneNumber
-                << " priority reset to normal (vehicles: " << count << ")";
-            DebugLogger::log(oss.str());
+            oss << "*** Lane " << laneId << laneNumber
+                << " PRIORITY MODE DEACTIVATED: " << count << " vehicles (<5)";
+            DebugLogger::log(oss.str(), DebugLogger::LogLevel::INFO);
         }
     }
 }
+
 
 bool Lane::isPriorityLane() const {
     return isPriority;
