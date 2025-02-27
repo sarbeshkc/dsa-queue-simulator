@@ -84,7 +84,7 @@ sudo make install
 #### Windows
 ```powershell
 # Clone SDL3
-git clone https://github.com/libsdl-org/SDL.git -b SDL3
+git clone https://github.com/libsdl-org/SDL.git
 cd SDL
 
 # Build with Visual Studio
