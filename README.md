@@ -150,11 +150,6 @@ You need to run both the traffic generator and simulator:
    .\bin\Release\simulator.exe
    ```
 
-### 🎮 Controls
-
-- **ESC**: Exit the application
-- **D**: Toggle debug overlay with statistics
-
 ## 📂 Project Structure
 
 ```
