@@ -20,6 +20,7 @@
 *.app
 
 # Build directories
+libs/
 build/
 bin/
 obj/

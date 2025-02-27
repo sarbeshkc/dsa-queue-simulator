@@ -1,4 +1,4 @@
-// FILE: include/visualization/Renderer.h
+// F// FILE: include/visualization/Renderer.h
 #ifndef RENDERER_H
 #define RENDERER_H
 
@@ -6,7 +6,9 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include "core/Vehicle.h" // Add this to include Direction enum
+#include <random>
+#include <cmath>
+#include "core/Vehicle.h" // For Direction enum
 
 class Lane;
 class TrafficLight;
@@ -68,9 +70,30 @@ private:
     void drawDebugOverlay();
     void drawLaneLabels();
     void drawStatistics();
+    void drawAlertIcon(int x, int y);
 
-    // Text rendering (simplified without TTF)
+    // Modern UI drawing functions
+    void drawCityBlocks();
+    void drawBuildingWindows(int buildingX, int buildingY, int buildingWidth, int buildingHeight);
+    void drawRoadTexture();
+    void drawLaneDividers();
+    void drawLaneIndicators();
+    void drawCrosswalks();
+    void drawStopLines();
+    void drawLaneMarker(int x, int y, const std::string& label, SDL_Color color, bool isVertical);
+    void drawNeonSign(int x, int y, const std::string& text, SDL_Color color, bool isHorizontal);
+    void drawNeonChar(float x, float y, char c, SDL_Color color, bool isVertical);
+    void drawLaneLegend();
+    void drawLaneFlowArrow(int x, int y, Direction dir);
+
+    // Text and character rendering
     void drawText(const std::string& text, int x, int y, SDL_Color color);
+    void drawSimpleChar(char c, int x, int y);
+
+    // Vehicle rendering
+    void renderModernVehicle(Vehicle* vehicle, int queuePos);
+    void drawVehicleLights(float x, float y, int laneNumber, char laneChar,
+                          Direction dir, bool isTurning, Destination destination);
 
     // Load textures
     bool loadTextures();
@@ -78,12 +101,9 @@ private:
     // Process SDL events
     bool processEvents();
 
-    // Helper to draw a filled road arrow
+    // Helper to draw a filled arrow
     void drawArrow(int x1, int y1, int x2, int y2, int x3, int y3, SDL_Color color);
-
-    // Helper to draw a direction arrow - this declaration was missing
     void drawDirectionArrow(int x, int y, Direction dir, SDL_Color color);
-  void drawLaneFlowArrow(int x, int y, Direction dir);
 };
 
-#endif // RENDERER_Hendif // RENDERER_Hendif // RENDERER_Hendif // RENDERER_H
+#endif // RENDERER_Hf // RENDERER_Hendif // RENDERER_Hendif // RENDERER_Hendif // RENDERER_Hendif // RENDERER_H
